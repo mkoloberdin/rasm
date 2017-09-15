@@ -1,6 +1,6 @@
 /***
 
-Rasm (roudoudou assembler) Z80 assembler v0.59
+Rasm (roudoudou assembler) Z80 assembler v0.60
 
 Check latest official release at: http://www.cpcwiki.eu/forum/programming/rasm-z80-assembler-in-beta/
 
@@ -201,12 +201,12 @@ limitations:
 -----------------------------------------------------
 
 GCC compilation:
-cc rasm_v059.c -O2 -lm -lrt
+cc rasm_v060.c -O2 -lm -lrt
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v059.c -O2
+cl.exe rasm_v060.c -O2
 
 */
 
@@ -446,7 +446,6 @@ struct s_assenv {
 	int maxptr;
 	/* CPR memory */
 	unsigned char **mem;
-	int sbank[32];
 	int iwnamebank[32];
 	int nbbank,maxbank;
 	int forcecpr,cprmode,activebank,amsdos,snapshot;
@@ -1876,7 +1875,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 							   expression->crunch_block=1 -> oui si même block
 							   expression->crunch_block=2 -> non car sera relogée
 							*/
-							curlabel=SearchLabel(ae,varbuffer+minusptr,crc);
+							curlabel=SearchLabel(ae,varbuffer+minusptr+bank,crc);
 							if (curlabel) {
 								if (ae->stage<2) {
 									if (curlabel->lz==-1) {
@@ -5324,15 +5323,6 @@ void __BANK(struct s_assenv *ae) {
 		__LZCLOSE(ae);
 	}
 
-	if (ae->activebank>=0 && ae->activebank<32 && ae->sbank[ae->activebank]) {
-		/* bank already selected, create a new memory space */
-		ae->activebank=ae->nbbank;
-		mem=MemMalloc(65536);
-		memset(mem,0,65536);
-		ObjectArrayAddDynamicValueConcat((void**)&ae->mem,&ae->nbbank,&ae->maxbank,&mem,sizeof(mem));
-	} else {
-		ae->sbank[ae->activebank]=1;
-	}
 	ae->outputadr=0;
 	ae->codeadr=0;
 	orgzone.memstart=0;
@@ -6405,6 +6395,7 @@ struct s_asm_keyword instruction[]={
 {"EI",0,_EI},
 {"NOP",0,_NOP},
 {"DEFB",0,_DEFB},
+{"DEFM",0,_DEFB},
 {"DB",0,_DEFB},
 {"DEFW",0,_DEFW},
 {"DW",0,_DEFW},
@@ -8412,7 +8403,7 @@ void Usage()
 	#undef FUNC
 	#define FUNC "Usage"
 	
-	printf("%.*s.exe v0.59 (c) 2017 Edouard BERGE\n",(int)(sizeof(__FILENAME__)-3),__FILENAME__);
+	printf("%.*s.exe v0.60 (c) 2017 Edouard BERGE\n",(int)(sizeof(__FILENAME__)-3),__FILENAME__);
 	printf("LZ4 (c) 2011 by Yann Collet\n");
 	printf("ZX7 (c) 2012 by Einar Saukas\n");
 	printf("Exomizer 2 (c) 2005 by Magnus Lind\n");
