@@ -1,6 +1,6 @@
 /***
 
-Rasm (roudoudou assembler) Z80 assembler v0.60
+Rasm (roudoudou assembler) Z80 assembler v0.61
 
 Check latest official release at: http://www.cpcwiki.eu/forum/programming/rasm-z80-assembler-in-beta/
 
@@ -201,12 +201,12 @@ limitations:
 -----------------------------------------------------
 
 GCC compilation:
-cc rasm_v060.c -O2 -lm -lrt
+cc rasm_v061.c -O2 -lm -lrt
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v060.c -O2
+cl.exe rasm_v061.c -O2
 
 */
 
@@ -230,11 +230,13 @@ cl.exe rasm_v060.c -O2
 	#include"../tools/library.h"
 #endif
 
+#ifndef NO_3RD_PARTIES
 #define __FILENAME__ "3rd parties"
 /* 3rd parties compression */
 #include"zx7.h"
 #include"lz4.h"
 #include"exomizer.h"
+#endif
 
 #undef __FILENAME__
 #define __FILENAME__ "rasm.c"
@@ -673,12 +675,14 @@ A-Z variable ou fonction (cos, sin, tan, sqr, pow, mod, and, xor, mod, ...)
 #define AutomateValidLabelFirstDefinition ".ABCDEFGHIJKLMNOPQRSTUVWXYZ_@"
 #define AutomateValidLabelDefinition "0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@"
 
+#ifndef NO_3RD_PARTIES
 unsigned char *LZ4_crunch(unsigned char *data, int zelen, int *retlen){
 	unsigned char *lzdest=NULL;
 	lzdest=MemMalloc(65536);
 	*retlen=LZ4_compress_HC((char*)data,(char*)lzdest,zelen,65536,9);
 	return lzdest;
 }
+#endif
 unsigned char *LZ48_encode_legacy(unsigned char *data, int length, int *retlength);
 #define LZ48_crunch LZ48_encode_legacy
 unsigned char *LZ49_encode_legacy(unsigned char *data, int length, int *retlength);
@@ -704,7 +708,7 @@ char *TxtReplace(char *in_str, char *in_substr, char *out_substr, int recurse)
 	
 	char *str_look,*m1,*m2;
 	char *out_str;
-	int i,sl,l1,l2,dif,cpt;
+	int sl,l1,l2,dif,cpt;
 
 	if (in_str==NULL)
 		return NULL;
@@ -928,7 +932,7 @@ char *MergePath(struct s_assenv *ae,char *dadfilename, char *filename) {
 	#define FUNC "MergePath"
 
 	static char curpath[PATH_MAX];
-	int zelen,idx;
+	int zelen;
 
 	zelen=strlen(filename);
 #ifdef OS_WIN
@@ -1267,7 +1271,7 @@ void InsertDicoToTree(struct s_assenv *ae, struct s_expr_dico *dico)
 	#define FUNC "InsertDicoToTree"
 
 	struct s_crcdico_tree *curdicotree;
-	int i,radix,dek=32;
+	int radix,dek=32;
 
 	curdicotree=&ae->dicotree;
 	while (dek) {
@@ -1284,6 +1288,39 @@ void InsertDicoToTree(struct s_assenv *ae, struct s_expr_dico *dico)
 	ObjectArrayAddDynamicValueConcat((void**)&curdicotree->dico,&curdicotree->ndico,&curdicotree->mdico,dico,sizeof(struct s_expr_dico));
 }
 
+void ExportDicoTreeRecurse(struct s_crcdico_tree *lt, char *zefile, char *zeformat)
+{
+	#undef FUNC
+	#define FUNC "ExportDicoTreeRecurse"
+
+	char symbol_line[1024];
+	int i;
+
+	for (i=0;i<256;i++) {
+		if (lt->radix[i]) {
+			ExportDicoTreeRecurse(lt->radix[i],zefile,zeformat);
+		}
+	}
+	if (lt->mdico) {
+		for (i=0;i<lt->ndico;i++) {(lt->dico[i].name);
+			sprintf(symbol_line,zeformat,lt->dico[i].name,(int)floor(lt->dico[i].v+0.5));
+			FileWriteLine(zefile,symbol_line);
+		}
+	}
+}
+void ExportDicoTree(struct s_assenv *ae, char *zefile, char *zeformat)
+{
+	#undef FUNC
+	#define FUNC "ExportDicoTree"
+
+	int i;
+
+	for (i=0;i<256;i++) {
+		if (ae->dicotree.radix[i]) {
+			ExportDicoTreeRecurse(ae->dicotree.radix[i],zefile,zeformat);
+		}
+	}
+}
 void FreeDicoTreeRecurse(struct s_crcdico_tree *lt)
 {
 	#undef FUNC
@@ -1296,7 +1333,10 @@ void FreeDicoTreeRecurse(struct s_crcdico_tree *lt)
 			FreeDicoTreeRecurse(lt->radix[i]);
 		}
 	}
-	if (lt->mdico) MemFree(lt->dico);
+	if (lt->mdico) {
+		for (i=0;i<lt->ndico;i++) MemFree(lt->dico[i].name);
+		MemFree(lt->dico);
+	}
 	MemFree(lt);
 }
 void FreeDicoTree(struct s_assenv *ae)
@@ -1481,12 +1521,12 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	/* backup alias replace */
 	char *zeexpression,*expr;
 	int original=1;
-	int ialias,startvar,endvar;
+	int ialias,startvar;
 	int newlen,lenw;
 	/* dictionnary */
 	struct s_expr_dico *curdic;
 	struct s_label *curlabel;
-	int idic,minusptr,imkey,bank;
+	int minusptr,imkey,bank;
 	double curval;
 	/* dynamic isolation */
 	static int max_isolation_depth=0;
@@ -2356,10 +2396,10 @@ void ExpressionFastTranslate(struct s_assenv *ae, char **ptr_expr, int fullrepla
 	static char *varbuffer=NULL;
 	static int ivar=0,maxivar=1;
 	char curval[256]={0};
-	int c,lenw=0,idx=0,idic,crc,startvar,newlen,i,ialias,found_replace,yves,dek,reidx;
+	int c,lenw=0,idx=0,crc,startvar,newlen,ialias,found_replace,yves,dek,reidx,lenbuf,rlen;
 	double v;
 	char tmpuchar[5];
-	char *expr,*locallabel,lenbuf,rlen;
+	char *expr,*locallabel;
 	
 	if (!ae) {
 		if (varbuffer) MemFree(varbuffer);
@@ -2726,7 +2766,7 @@ void PopAllExpression(struct s_assenv *ae, int crunched_zone)
 			expr=ae->wl[ae->expression[i].iw].w;
 		}
 		v=ComputeExpressionCore(ae,expr,ae->expression[i].ptr,i);
-		r=floor(v+ae->rough);
+		r=(long)floor(v+ae->rough);
 		switch (ae->expression[i].zetype) {
 			case E_EXPRESSION_J8:
 				r=r-ae->expression[i].ptr-2;
@@ -2804,7 +2844,7 @@ void InsertLabelToTree(struct s_assenv *ae, struct s_label *label)
 	#define FUNC "InsertLabelToTree"
 
 	struct s_crclabel_tree *curlabeltree;
-	int i,radix,dek=32;
+	int radix,dek=32;
 
 	curlabeltree=&ae->labeltree;
 	while (dek) {
@@ -2828,7 +2868,6 @@ void PushLabel(struct s_assenv *ae)
 	
 	struct s_label curlabel={0},*searched_label;
 	char *curlabelname;
-	char hexdigit[9];
 	int i;
 
 	if (ae->AutomateValidLabelFirst[ae->wl[ae->idx].w[0]]) {
@@ -5039,6 +5078,10 @@ void _DEFS(struct s_assenv *ae) {
 		ExpressionFastTranslate(ae,&ae->wl[ae->idx+2].w,0);
 		r=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
 		v=RoundComputeExpressionCore(ae,ae->wl[ae->idx+2].w,ae->codeadr,0);
+		if (r<0) {
+			rasm_printf(ae,"[%s] Error line %d - DEFS size must be greater or equal to zero\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			MaxError(ae);
+		}
 		for (i=0;i<r;i++) {
 			___output(ae,v);
 		}
@@ -5047,6 +5090,10 @@ void _DEFS(struct s_assenv *ae) {
 		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 		r=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
 		v=0;
+		if (r<0) {
+			rasm_printf(ae,"[%s] Error line %d - DEFS size must be greater or equal to zero\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			MaxError(ae);
+		}
 		for (i=0;i<r;i++) {
 			___output(ae,v);
 		}
@@ -5159,6 +5206,11 @@ void __BUILDCPR(struct s_assenv *ae) {
 void __LZ4(struct s_assenv *ae) {
 	struct s_lz_section curlz;
 	
+	#ifdef NO_3RD_PARTIES
+		rasm_printf(ae,"[%s] Error line %d - Cannot use 3rd parties cruncher with this version of RASM\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		exit(-5);
+	#endif
+	
 	if (ae->lz>=0 && ae->lz<ae->ilz) {
 		rasm_printf(ae,"[%s] Error line %d - Cannot start a new LZ section inside another one (%d)\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->lz);
 		exit(-5);
@@ -5175,6 +5227,11 @@ void __LZ4(struct s_assenv *ae) {
 void __LZX7(struct s_assenv *ae) {
 	struct s_lz_section curlz;
 	
+	#ifdef NO_3RD_PARTIES
+		rasm_printf(ae,"[%s] Error line %d - Cannot use 3rd parties cruncher with this version of RASM\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		exit(-5);
+	#endif
+	
 	if (ae->lz>=0 && ae->lz<ae->ilz) {
 		rasm_printf(ae,"[%s] Error line %d - Cannot start a new LZ section inside another one (%d)\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->lz);
 		exit(-5);
@@ -5190,6 +5247,11 @@ void __LZX7(struct s_assenv *ae) {
 }
 void __LZEXO(struct s_assenv *ae) {
 	struct s_lz_section curlz;
+	
+	#ifdef NO_3RD_PARTIES
+		rasm_printf(ae,"[%s] Error line %d - Cannot use 3rd parties cruncher with this version of RASM\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		exit(-5);
+	#endif
 	
 	if (ae->lz>=0 && ae->lz<ae->ilz) {
 		rasm_printf(ae,"[%s] Error line %d - Cannot start a new LZ section inside another one (%d)\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->lz);
@@ -5298,7 +5360,6 @@ void OverWriteCheck(struct s_assenv *ae)
 
 void __BANK(struct s_assenv *ae) {
 	struct s_orgzone orgzone={0};
-	unsigned char *mem;
 
 	__internal_UpdateLZBlockIfAny(ae);
 
@@ -5334,7 +5395,6 @@ void __BANK(struct s_assenv *ae) {
 
 void __NameBANK(struct s_assenv *ae) {
 	struct s_orgzone orgzone={0};
-	unsigned char *mem;
 	int ibank;
 
 	ae->cprmode=1;
@@ -5365,7 +5425,7 @@ void __NameBANK(struct s_assenv *ae) {
 void __WRITE(struct s_assenv *ae) {
 	struct s_orgzone orgzone={0};
 	unsigned char *mem;
-	int i,idx=1,ok=0;
+	int idx=1,ok=0;
 	int lower=-1,upper=-1,bank=-1;
 
 	if (!ae->wl[ae->idx].t && strcmp(ae->wl[ae->idx+1].w,"DIRECT")==0 && !ae->wl[ae->idx+1].t) {
@@ -5869,7 +5929,7 @@ void __REPEAT(struct s_assenv *ae) {
 	struct s_repeat currepeat={0};
 	int *loopstyle;
 	int iloop,mloop;
-	int loopcpt,cidx;
+	int cidx;
 	
 	if (ae->wl[ae->idx+1].t!=2) {
 		if (ae->wl[ae->idx].t==0) {
@@ -5999,6 +6059,23 @@ void __UNTIL(struct s_assenv *ae) {
 	}
 }
 
+void __ASSERT(struct s_assenv *ae) {
+	int rexpr;
+
+	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
+		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
+		rexpr=!!RoundComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,1);
+		if (!rexpr) {
+			rasm_printf(ae,"[%s] Error line %d, ASSERT failed!\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			exit(2);
+		}
+		ae->idx++;
+	} else {
+		rasm_printf(ae,"[%s] Error line %d, ASSERT need one expression\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		exit(2);
+	}
+}
+
 void __IF(struct s_assenv *ae) {
 	int rexpr;
 
@@ -6049,7 +6126,6 @@ void __CASE(struct s_assenv *ae) {
 	}
 }
 void __DEFAULT(struct s_assenv *ae) {
-	int rexpr;
 	
 	if (ae->isw) {
 		if (ae->wl[ae->idx].t==1) {
@@ -6067,7 +6143,6 @@ void __DEFAULT(struct s_assenv *ae) {
 	}
 }
 void __BREAK(struct s_assenv *ae) {
-	int rexpr;
 	
 	if (ae->isw) {
 		if (ae->wl[ae->idx].t==1) {
@@ -6181,7 +6256,7 @@ void __PROTECT(struct s_assenv *ae) {
 
 void __ORG(struct s_assenv *ae) {
 	struct s_orgzone orgzone={0};
-	int i,j;
+	int i;
 
 	if (ae->lz>=0) {
 		rasm_printf(ae,"[%s] Error line %d - Cannot ORG inside a LZ section\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
@@ -6241,8 +6316,8 @@ void __ORG(struct s_assenv *ae) {
 }
 
 void __HEXBIN(struct s_assenv *ae) {
-	int idx,hbinidx;
-	unsigned int offset=0,size=0;
+	int hbinidx;
+	unsigned int offset=0,size=0,idx;
 	
 	if (!ae->wl[ae->idx].t) {
 		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,1);
@@ -6305,8 +6380,7 @@ void __HEXBIN(struct s_assenv *ae) {
 void __SAVE(struct s_assenv *ae) {
 	struct s_save cursave={0};
 	unsigned int offset=0,size=0;
-	int idx,hbinidx,ko=1;
-	unsigned char *mem;
+	int ko=1;
 	
 	if (!ae->wl[ae->idx].t) {
 		/* nom de fichier entre quotes */
@@ -6395,7 +6469,6 @@ struct s_asm_keyword instruction[]={
 {"EI",0,_EI},
 {"NOP",0,_NOP},
 {"DEFB",0,_DEFB},
-{"DEFM",0,_DEFB},
 {"DB",0,_DEFB},
 {"DEFW",0,_DEFW},
 {"DW",0,_DEFW},
@@ -6455,6 +6528,7 @@ struct s_asm_keyword instruction[]={
 {"WRITE",0,__WRITE},
 {"MACRO",0,__MACRO},
 {"LET",0,__LET},
+{"ASSERT",0,__ASSERT},
 {"CHARSET",0,__CHARSET},
 {"RUN",0,__RUN},
 {"SAVE",0,__SAVE},
@@ -6710,14 +6784,20 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 
 		switch (ae->lzsection[i].lzversion) {
 			case 7:
+				#ifndef NO_3RD_PARTIES
 				lzdata=ZX7_compress(optimize(input_data, input_size), input_data, input_size, &slzlen);
 				lzlen=slzlen;
+				#endif
 				break;
 			case 4:
+				#ifndef NO_3RD_PARTIES
 				lzdata=LZ4_crunch(input_data,input_size,&lzlen);
+				#endif
 				break;
 			case 8:
+				#ifndef NO_3RD_PARTIES
 				lzdata=Exomizer_crunch(input_data,input_size,&lzlen);
+				#endif
 				break;
 			case 48:
 				lzdata=LZ48_crunch(input_data,input_size,&lzlen);
@@ -6765,7 +6845,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 //rasm_printf(ae,"lzsection[%d] O%d B%d\n",i,ae->lzsection[i].iorgzone,ae->lzsection[i].ibank);
 		il=i+1;
 		while (il<ae->ilz && ae->lzsection[il].iorgzone==iorgzone && ae->lzsection[il].ibank==ibank) {
-			rasm_printf(ae,"reloger lzsection[%d] O%d B%d\n",il,ae->lzsection[il].iorgzone,ae->lzsection[il].ibank);
+			//rasm_printf(ae,"reloger lzsection[%d] O%d B%d\n",il,ae->lzsection[il].iorgzone,ae->lzsection[il].ibank);
 			ae->lzsection[il].memstart+=lzshift;
 			ae->lzsection[il].memend+=lzshift;
 			il++;
@@ -6886,9 +6966,8 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				if (maxmem-minmem<=0) {
 					rasm_printf(ae,"Warning: Not a single byte to output\n");
 				} else {
-					rasm_printf(ae,"Write binary file %s (%d byte%s)\n",TMP_filename,maxmem-minmem,maxmem-minmem>1?"s":"");
-
 					if (!ae->flux) {
+						rasm_printf(ae,"Write binary file %s (%d byte%s)\n",TMP_filename,maxmem-minmem,maxmem-minmem>1?"s":"");
 						if (ae->amsdos) {
 							int checksum;
 							/***  cpcwiki			
@@ -6934,8 +7013,10 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 							}
 						}
 					} else {
+						int curbank;
+						curbank=ae->orgzone[0].ibank;
 						*dataout=MemMalloc(maxmem-minmem+1);
-						memcpy(*dataout,ae->mem+minmem,maxmem-minmem);
+						memcpy(*dataout,ae->mem[curbank]+minmem,maxmem-minmem);
 						*lenout=maxmem-minmem;
 					}
 				}
@@ -6966,10 +7047,8 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 				}
 				if (ae->export_var) {
-					for (i=0;i<ae->idic;i++) {
-						sprintf(symbol_line,"%s #%04X\n",ae->dico[i].name,(int)floor(ae->dico[i].v+0.5));
-						FileWriteLine(TMP_filename,symbol_line);
-					}
+					/* var are part of fast tree search structure */
+					ExportDicoTree(ae,TMP_filename,"%s #%04X\n");
 				}
 				if (ae->export_equ) {
 					for (i=0;i<ae->ialias;i++) {
@@ -6993,10 +7072,8 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 				}
 				if (ae->export_var) {
-					for (i=0;i<ae->idic;i++) {
-						sprintf(symbol_line,"%s EQU 0%04XH\n",ae->dico[i].name,(int)floor(ae->dico[i].v+0.5));
-						FileWriteLine(TMP_filename,symbol_line);
-					}
+					/* var are part of fast tree search structure */
+					ExportDicoTree(ae,TMP_filename,"%s EQU 0%04XH\n");
 				}
 				if (ae->export_equ) {
 					for (i=0;i<ae->ialias;i++) {
@@ -7020,10 +7097,8 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 				}
 				if (ae->export_var) {
-					for (i=0;i<ae->idic;i++) {
-						sprintf(symbol_line,"%s #%X B0\n",ae->dico[i].name,(int)floor(ae->dico[i].v+0.5));
-						FileWriteLine(TMP_filename,symbol_line);
-					}
+					/* var are part of fast tree search structure */
+					ExportDicoTree(ae,TMP_filename,"%s #%X B0\n");
 				}
 				if (ae->export_equ) {
 					for (i=0;i<ae->ialias;i++) {
@@ -7274,7 +7349,6 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	int nbword=0,maxword=0;
 	char **zelines=NULL;
 
-	char currentfilename[PATH_MAX];
 	char *filename_toread;
 	
 	struct s_macro_fast *MacroFast=NULL;
@@ -7291,9 +7365,8 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	char *newlistingline=NULL;
 	unsigned char *newdata;
 	struct s_label curlabel={0};
-	char *labelsep1,*labelsep2;
+	char *labelsep1;
 	char **labelines=NULL;
-	int labelformat;
 	/* state machine buffer */
 	unsigned char *mem=NULL;
 	char *w=NULL,*wtmp=NULL;
@@ -7408,11 +7481,13 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		zelines=FileReadLines(filename);
 		FieldArrayAddDynamicValueConcat(&ae->filename,&ae->ifile,&ae->maxfile,filename);
 	} else {
-		/* copie des données */
 		zelines=MemMalloc(2*sizeof(char *));
 		zelines[0]=MemMalloc(datalen+3);
 		zelines[1]=NULL;
+		/* copie des données */
 		memcpy(zelines[0],datain,datalen);
+		/* et on ajoute un petit zéro à la fin! */
+		zelines[0][datalen]=0;
 		/* en mode flux on prend le repertoire courant en reference */
 		FieldArrayAddDynamicValueConcat(&ae->filename,&ae->ifile,&ae->maxfile,CURRENT_DIR);
 	}	
@@ -7504,6 +7579,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 						}
 						FileReadBinaryClose(filename_toread);
 						switch (crunch) {
+							#ifndef NO_3RD_PARTIES
 							case 4:
 								newdata=LZ4_crunch(curhexbin.data,curhexbin.datalen,&curhexbin.datalen);
 								MemFree(curhexbin.data);
@@ -7532,6 +7608,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 									rasm_printf(ae,"crunched into %d byte(s)\n",curhexbin.datalen);
 								}
 								break;
+							#endif
 							case 48:
 								newdata=LZ48_crunch(curhexbin.data,curhexbin.datalen,&curhexbin.datalen);
 								MemFree(curhexbin.data);
@@ -8148,24 +8225,37 @@ int RasmAssemble(const char *datain, int lenin, unsigned char **dataout, int *le
 	return Assemble(ae,dataout,lenout);
 }
 
-void RasmTest(void)
+#define AUTOTEST_MACRO "macro glop:@glop:ld hl,@next:djnz @glop:@next:mend:macro glop2:@glop:glop:ld hl,@next:djnz @glop:glop:@next:mend:cpti=0:repeat:glop:cpt=0:glop:repeat:glop2:repeat 1:@glop:dec a:ld hl,@next:glop2:glop2:jr nz,@glop:@next:rend:cpt=cpt+1:glop2:until cpt<3:cpti=cpti+1:glop2:until cpti<3"
+
+#define AUTOTEST_OPCODES "nop::ld bc,#1234::ld (bc),a::inc bc:inc b:dec b:ld b,#12:rlca:ex af,af':add hl,bc:ld a,(bc):dec bc:inc c:dec c:ld c,#12:rrca::djnz $:ld de,#1234:ld (de),a:inc de:inc d:dec d:ld d,#12:rla:jr $:add hl,de:ld a,(de):dec de:inc e:dec e:ld e,#12:rra::jr nz,$:ld hl,#1234:ld (#1234),hl:inc hl:inc h:dec h:ld h,#12:daa:jr z,$:add hl,hl:ld hl,(#1234):dec hl:inc l:dec l:ld l,#12:cpl::jr nc,$:ld sp,#1234:ld (#1234),a:inc sp:inc (hl):dec (hl):ld (hl),#12:scf:jr c,$:add hl,sp:ld a,(#1234):dec sp:inc a:dec a:ld a,#12:ccf::ld b,b:ld b,c:ld b,d:ld b,e:ld b,h:ld b,l:ld b,(hl):ld b,a:ld c,b:ld c,c:ld c,d:ld c,e:ld c,h:ld c,l:ld c,(hl):ld c,a::ld d,b:ld d,c:ld d,d:ld d,e:ld d,h:ld d,l:ld d,(hl):ld d,a:ld e,b:ld e,c:ld e,d:ld e,e:ld e,h:ld e,l:ld e,(hl):ld e,a::ld h,b:ld h,c:ld h,d:ld h,e:ld h,h:ld h,l:ld h,(hl):ld h,a:ld l,b:ld l,c:ld l,d:ld l,e:ld l,h:ld l,l:ld l,(hl):ld l,a::ld (hl),b:ld (hl),c:ld (hl),d:ld (hl),e:ld (hl),h:ld (hl),l:halt:ld (hl),a:ld a,b:ld a,c:ld a,d:ld a,e:ld a,h:ld a,l:ld a,(hl):ld a,a::add b:add c:add d:add e:add h:add l:add (hl):add a:adc b:adc c:adc d:adc e:adc h:adc l:adc (hl):adc a::sub b:sub c:sub d:sub e:sub h:sub l:sub (hl):sub a:sbc b:sbc c:sbc d:sbc e:sbc h:sbc l:sbc (hl):sbc a::and b:and c:and d:and e:and h:and l:and (hl):and a:xor b:xor c:xor d:xor e:xor h:xor l:xor (hl):xor a::or b:or c:or d:or e:or h:or l:or (hl):or a:cp b:cp c:cp d:cp e:cp h:cp l:cp (hl):cp a::ret nz:pop bc:jp nz,#1234:jp #1234:call nz,#1234:push bc:add #12:rst 0:ret z:ret:jp z,#1234:nop:call z,#1234:call #1234:adc #12:rst 8::ret nc:pop de:jp nc,#1234:out (#12),a:call nc,#1234:push de:sub #12:rst #10:ret c:exx:jp c,#1234:in a,(#12):call c,#1234:nop:sbc #12:rst #18::ret po:pop hl:jp po,#1234:ex (sp),hl:call po,#1234:push hl:and #12:rst #20:ret pe:jp (hl):jp pe,#1234:ex de,hl:call pe,#1234:nop:xor #12:rst #28::ret p:pop af:jp p,#1234:di:call p,#1234:push af:or #12:rst #30:ret m:ld sp,hl:jp m,#1234:ei:call m,#1234:nop:cp #12:rst #38:in b,(c):out (c),b:sbc hl,bc:ld (#1234),bc:neg:retn:im 0:ld i,a:in c,(c):out (c),c:adc hl,bc:ld bc,(#1234):reti:ld r,a::in d,(c):out (c),d:sbc hl,de:ld (#1234),de:retn:im 1:ld a,i:in e,(c):out (c),e:adc hl,de:ld de,(#1234):im 2:ld a,r::in h,(c):out (c),h:sbc hl,hl:rrd:in l,(c):out (c),l:adc hl,hl:rld::in 0,(c):out (c),0:sbc hl,sp:ld (#1234),sp:in a,(c):out (c),a:adc hl,sp:ld sp,(#1234)::ldi:cpi:ini:outi:ldd:cpd:ind:outd::ldir:cpir:inir:otir:lddr:cpdr:indr:otdr::rlc b:rlc c:rlc d:rlc e:rlc h:rlc l:rlc (hl):rlc a:rrc b:rrc c:rrc d:rrc e:rrc h:rrc l:rrc (hl):rrc a::rl b:rl c:rl d:rl e:rl h:rl l:rl (hl):rl a:rr b:rr c:rr d:rr e:rr h:rr l:rr (hl):rr a:sla b:sla c:sla d:sla e:sla h:sla l:sla (hl):sla a:sra b:sra c:sra d:sra e:sra h:sra l:sra (hl):sra a::sll b:sll c:sll d:sll e:sll h:sll l:sll (hl):sll a:srl b:srl c:srl d:srl e:srl h:srl l:srl (hl):srl a::bit 0,b:bit 0,c:bit 0,d:bit 0,e:bit 0,h:bit 0,l:bit 0,(hl):bit 0,a::bit 1,b:bit 1,c:bit 1,d:bit 1,e:bit 1,h:bit 1,l:bit 1,(hl):bit 1,a::bit 2,b:bit 2,c:bit 2,d:bit 2,e:bit 2,h:bit 2,l:bit 2,(hl):bit 2,a::bit 3,b:bit 3,c:bit 3,d:bit 3,e:bit 3,h:bit 3,l:bit 3,(hl):bit 3,a::bit 4,b:bit 4,c:bit 4,d:bit 4,e:bit 4,h:bit 4,l:bit 4,(hl):bit 4,a::bit 5,b:bit 5,c:bit 5,d:bit 5,e:bit 5,h:bit 5,l:bit 5,(hl):bit 5,a::bit 6,b:bit 6,c:bit 6,d:bit 6,e:bit 6,h:bit 6,l:bit 6,(hl):bit 6,a::bit 7,b:bit 7,c:bit 7,d:bit 7,e:bit 7,h:bit 7,l:bit 7,(hl):bit 7,a::res 0,b:res 0,c:res 0,d:res 0,e:res 0,h:res 0,l:res 0,(hl):res 0,a::res 1,b:res 1,c:res 1,d:res 1,e:res 1,h:res 1,l:res 1,(hl):res 1,a::res 2,b:res 2,c:res 2,d:res 2,e:res 2,h:res 2,l:res 2,(hl):res 2,a::res 3,b:res 3,c:res 3,d:res 3,e:res 3,h:res 3,l:res 3,(hl):res 3,a::res 4,b:res 4,c:res 4,d:res 4,e:res 4,h:res 4,l:res 4,(hl):res 4,a::res 5,b:res 5,c:res 5,d:res 5,e:res 5,h:res 5,l:res 5,(hl):res 5,a::res 6,b:res 6,c:res 6,d:res 6,e:res 6,h:res 6,l:res 6,(hl):res 6,a::res 7,b:res 7,c:res 7,d:res 7,e:res 7,h:res 7,l:res 7,(hl):res 7,a::set 0,b:set 0,c:set 0,d:set 0,e:set 0,h:set 0,l:set 0,(hl):set 0,a::set 1,b:set 1,c:set 1,d:set 1,e:set 1,h:set 1,l:set 1,(hl):set 1,a::set 2,b:set 2,c:set 2,d:set 2,e:set 2,h:set 2,l:set 2,(hl):set 2,a::set 3,b:set 3,c:set 3,d:set 3,e:set 3,h:set 3,l:set 3,(hl):set 3,a::set 4,b:set 4,c:set 4,d:set 4,e:set 4,h:set 4,l:set 4,(hl):set 4,a::set 5,b:set 5,c:set 5,d:set 5,e:set 5,h:set 5,l:set 5,(hl):set 5,a::set 6,b:set 6,c:set 6,d:set 6,e:set 6,h:set 6,l:set 6,(hl):set 6,a::set 7,b:set 7,c:set 7,d:set 7,e:set 7,h:set 7,l:set 7,(hl):set 7,a::add ix,bc::add ix,de::ld ix,#1234:ld (#1234),ix:inc ix:inc xh:dec xh:ld xh,#12:add ix,ix:ld ix,(#1234):dec ix:inc xl:dec xl:ld xl,#12::inc (ix+#12):dec (ix+#12):ld (ix+#12),#34:add ix,sp::ld b,xh:ld b,xl:ld b,(ix+#12):ld c,xh:ld c,xl:ld c,(ix+#12):::ld d,xh:ld d,xl:ld d,(ix+#12):ld e,xh:ld e,xl:ld e,(ix+#12)::ld xh,b:ld xh,c:ld xh,d:ld xh,e:ld xh,xh:ld xh,xl:ld h,(ix+#12):ld xh,a:ld xl,b:ld xl,c:ld xl,d:ld xl,e:ld xl,xh:ld xl,xl:ld l,(ix+#12):ld xl,a::ld (ix+#12),b:ld (ix+#12),c:ld (ix+#12),d:ld (ix+#12),e:ld (ix+#12),h:ld (ix+#12),l:ld (ix+#12),a:ld a,xh:ld a,xl:ld a,(ix+#12)::add xh:add xl:add (ix+#12):adc xh:adc xl:adc (ix+#12)::sub xh:sub xl:sub (ix+#12):sbc xh:sbc xl:sbc (ix+#12)::and xh:and xl:and (ix+#12):xor xh:xor xl:xor (ix+#12)::or xh:or xl:or (ix+#12):cp xh:cp xl:cp (ix+#12)::pop ix:ex (sp),ix:push ix:jp (ix)::ld sp,ix:::rlc (ix+#12),b:rlc (ix+#12),c:rlc (ix+#12),d:rlc (ix+#12),e:rlc (ix+#12),h:rlc (ix+#12),l:rlc (ix+#12):rlc (ix+#12),a:rrc (ix+#12),b:rrc (ix+#12),c:rrc (ix+#12),d:rrc (ix+#12),e:rrc (ix+#12),h:rrc (ix+#12),l:rrc (ix+#12):rrc (ix+#12),a::rl (ix+#12),b:rl (ix+#12),c:rl (ix+#12),d:rl (ix+#12),e:rl (ix+#12),h:rl (ix+#12),l:rl (ix+#12):rl (ix+#12),a:rr (ix+#12),b:rr (ix+#12),c:rr (ix+#12),d:rr (ix+#12),e:rr (ix+#12),h:rr (ix+#12),l:rr (ix+#12):rr (ix+#12),a::sla (ix+#12),b:sla (ix+#12),c:sla (ix+#12),d:sla (ix+#12),e:sla (ix+#12),h:sla (ix+#12),l:sla (ix+#12):sla (ix+#12),a:sra (ix+#12),b:sra (ix+#12),c:sra (ix+#12),d:sra (ix+#12),e:sra (ix+#12),h:sra (ix+#12),l:sra (ix+#12):sra (ix+#12),a::sll (ix+#12),b:sll (ix+#12),c:sll (ix+#12),d:sll (ix+#12),e:sll (ix+#12),h:sll (ix+#12),l:sll (ix+#12):sll (ix+#12),a:srl (ix+#12),b:srl (ix+#12),c:srl (ix+#12),d:srl (ix+#12),e:srl (ix+#12),h:srl (ix+#12),l:srl (ix+#12):srl (ix+#12),a::bit 0,(ix+#12):bit 1,(ix+#12):bit 2,(ix+#12):bit 3,(ix+#12):bit 4,(ix+#12):bit 5,(ix+#12):bit 6,(ix+#12):bit 7,(ix+#12):bit 0,(ix+#12),d:bit 1,(ix+#12),b:bit 2,(ix+#12),c:bit 3,(ix+#12),d:bit 4,(ix+#12),e:bit 5,(ix+#12),h:bit 6,(ix+#12),l:bit 7,(ix+#12),a:::res 0,(ix+#12),b:res 0,(ix+#12),c:res 0,(ix+#12),d:res 0,(ix+#12),e:res 0,(ix+#12),h:res 0,(ix+#12),l:res 0,(ix+#12):res 0,(ix+#12),a::res 1,(ix+#12),b:res 1,(ix+#12),c:res 1,(ix+#12),d:res 1,(ix+#12),e:res 1,(ix+#12),h:res 1,(ix+#12),l:res 1,(ix+#12):res 1,(ix+#12),a::res 2,(ix+#12),b:res 2,(ix+#12),c:res 2,(ix+#12),d:res 2,(ix+#12),e:res 2,(ix+#12),h:res 2,(ix+#12),l:res 2,(ix+#12):res 2,(ix+#12),a::res 3,(ix+#12),b:res 3,(ix+#12),c:res 3,(ix+#12),d:res 3,(ix+#12),e:res 3,(ix+#12),h:res 3,(ix+#12),l:res 3,(ix+#12):res 3,(ix+#12),a::res 4,(ix+#12),b:res 4,(ix+#12),c:res 4,(ix+#12),d:res 4,(ix+#12),e:res 4,(ix+#12),h:res 4,(ix+#12),l:res 4,(ix+#12):res 4,(ix+#12),a::res 5,(ix+#12),b:res 5,(ix+#12),c:res 5,(ix+#12),d:res 5,(ix+#12),e:res 5,(ix+#12),h:res 5,(ix+#12),l:res 5,(ix+#12):res 5,(ix+#12),a::res 6,(ix+#12),b:res 6,(ix+#12),c:res 6,(ix+#12),d:res 6,(ix+#12),e:res 6,(ix+#12),h:res 6,(ix+#12),l:res 6,(ix+#12):res 6,(ix+#12),a::res 7,(ix+#12),b:res 7,(ix+#12),c:res 7,(ix+#12),d:res 7,(ix+#12),e:res 7,(ix+#12),h:res 7,(ix+#12),l:res 7,(ix+#12):res 7,(ix+#12),a::set 0,(ix+#12),b:set 0,(ix+#12),c:set 0,(ix+#12),d:set 0,(ix+#12),e:set 0,(ix+#12),h:set 0,(ix+#12),l:set 0,(ix+#12):set 0,(ix+#12),a::set 1,(ix+#12),b:set 1,(ix+#12),c:set 1,(ix+#12),d:set 1,(ix+#12),e:set 1,(ix+#12),h:set 1,(ix+#12),l:set 1,(ix+#12):set 1,(ix+#12),a::set 2,(ix+#12),b:set 2,(ix+#12),c:set 2,(ix+#12),d:set 2,(ix+#12),e:set 2,(ix+#12),h:set 2,(ix+#12),l:set 2,(ix+#12):set 2,(ix+#12),a::set 3,(ix+#12),b:set 3,(ix+#12),c:set 3,(ix+#12),d:set 3,(ix+#12),e:set 3,(ix+#12),h:set 3,(ix+#12),l:set 3,(ix+#12):set 3,(ix+#12),a::set 4,(ix+#12),b:set 4,(ix+#12),c:set 4,(ix+#12),d:set 4,(ix+#12),e:set 4,(ix+#12),h:set 4,(ix+#12),l:set 4,(ix+#12):set 4,(ix+#12),a::set 5,(ix+#12),b:set 5,(ix+#12),c:set 5,(ix+#12),d:set 5,(ix+#12),e:set 5,(ix+#12),h:set 5,(ix+#12),l:set 5,(ix+#12):set 5,(ix+#12),a::set 6,(ix+#12),b:set 6,(ix+#12),c:set 6,(ix+#12),d:set 6,(ix+#12),e:set 6,(ix+#12),h:set 6,(ix+#12),l:set 6,(ix+#12):set 6,(ix+#12),a::set 7,(ix+#12),b:set 7,(ix+#12),c:set 7,(ix+#12),d:set 7,(ix+#12),e:set 7,(ix+#12),h:set 7,(ix+#12),l:set 7,(ix+#12):set 7,(ix+#12),a::add iy,bc::add iy,de::ld iy,#1234:ld (#1234),iy:inc iy:inc yh:dec yh:ld yh,#12:add iy,iy:ld iy,(#1234):dec iy:inc yl:dec yl:ld yl,#12::inc (iy+#12):dec (iy+#12):ld (iy+#12),#34:add iy,sp::ld b,yh:ld b,yl:ld b,(iy+#12):ld c,yh:ld c,yl:ld c,(iy+#12):::ld d,yh:ld d,yl:ld d,(iy+#12):ld e,yh:ld e,yl:ld e,(iy+#12)::ld yh,b:ld yh,c:ld yh,d:ld yh,e:ld yh,yh:ld yh,yl:ld h,(iy+#12):ld yh,a:ld yl,b:ld yl,c:ld yl,d:ld yl,e:ld yl,yh:ld yl,yl:ld l,(iy+#12):ld yl,a::ld (iy+#12),b:ld (iy+#12),c:ld (iy+#12),d:ld (iy+#12),e:ld (iy+#12),h:ld (iy+#12),l:ld (iy+#12),a:ld a,yh:ld a,yl:ld a,(iy+#12)::add yh:add yl:add (iy+#12):adc yh:adc yl:adc (iy+#12)::sub yh:sub yl:sub (iy+#12):sbc yh:sbc yl:sbc (iy+#12)::and yh:and yl:and (iy+#12):xor yh:xor yl:xor (iy+#12)::or yh:or yl:or (iy+#12):cp yh:cp yl:cp (iy+#12)::pop iy:ex (sp),iy:push iy:jp (iy)::ld sp,iy::rlc (iy+#12),b:rlc (iy+#12),c:rlc (iy+#12),d:rlc (iy+#12),e:rlc (iy+#12),h:rlc (iy+#12),l:rlc (iy+#12):rlc (iy+#12),a:rrc (iy+#12),b:rrc (iy+#12),c:rrc (iy+#12),d:rrc (iy+#12),e:rrc (iy+#12),h:rrc (iy+#12),l:rrc (iy+#12):rrc (iy+#12),a::rl (iy+#12),b:rl (iy+#12),c:rl (iy+#12),d:rl (iy+#12),e:rl (iy+#12),h:rl (iy+#12),l:rl (iy+#12):rl (iy+#12),a:rr (iy+#12),b:rr (iy+#12),c:rr (iy+#12),d:rr (iy+#12),e:rr (iy+#12),h:rr (iy+#12),l:rr (iy+#12):rr (iy+#12),a::sla (iy+#12),b:sla (iy+#12),c:sla (iy+#12),d:sla (iy+#12),e:sla (iy+#12),h:sla (iy+#12),l:sla (iy+#12):sla (iy+#12),a:sra (iy+#12),b:sra (iy+#12),c:sra (iy+#12),d:sra (iy+#12),e:sra (iy+#12),h:sra (iy+#12),l:sra (iy+#12):sra (iy+#12),a::sll (iy+#12),b:sll (iy+#12),c:sll (iy+#12),d:sll (iy+#12),e:sll (iy+#12),h:sll (iy+#12),l:sll (iy+#12):sll (iy+#12),a:srl (iy+#12),b:srl (iy+#12),c:srl (iy+#12),d:srl (iy+#12),e:srl (iy+#12),h:srl (iy+#12),l:srl (iy+#12):srl (iy+#12),a::bit 0,(iy+#12):bit 1,(iy+#12):bit 2,(iy+#12):bit 3,(iy+#12):bit 4,(iy+#12):bit 5,(iy+#12):bit 6,(iy+#12):bit 7,(iy+#12)::res 0,(iy+#12),b:res 0,(iy+#12),c:res 0,(iy+#12),d:res 0,(iy+#12),e:res 0,(iy+#12),h:res 0,(iy+#12),l:res 0,(iy+#12):res 0,(iy+#12),a::res 1,(iy+#12),b:res 1,(iy+#12),c:res 1,(iy+#12),d:res 1,(iy+#12),e:res 1,(iy+#12),h:res 1,(iy+#12),l:res 1,(iy+#12):res 1,(iy+#12),a::res 2,(iy+#12),b:res 2,(iy+#12),c:res 2,(iy+#12),d:res 2,(iy+#12),e:res 2,(iy+#12),h:res 2,(iy+#12),l:res 2,(iy+#12):res 2,(iy+#12),a::res 3,(iy+#12),b:res 3,(iy+#12),c:res 3,(iy+#12),d:res 3,(iy+#12),e:res 3,(iy+#12),h:res 3,(iy+#12),l:res 3,(iy+#12):res 3,(iy+#12),a::res 4,(iy+#12),b:res 4,(iy+#12),c:res 4,(iy+#12),d:res 4,(iy+#12),e:res 4,(iy+#12),h:res 4,(iy+#12),l:res 4,(iy+#12):res 4,(iy+#12),a::res 5,(iy+#12),b:res 5,(iy+#12),c:res 5,(iy+#12),d:res 5,(iy+#12),e:res 5,(iy+#12),h:res 5,(iy+#12),l:res 5,(iy+#12):res 5,(iy+#12),a::res 6,(iy+#12),b:res 6,(iy+#12),c:res 6,(iy+#12),d:res 6,(iy+#12),e:res 6,(iy+#12),h:res 6,(iy+#12),l:res 6,(iy+#12):res 6,(iy+#12),a::res 7,(iy+#12),b:res 7,(iy+#12),c:res 7,(iy+#12),d:res 7,(iy+#12),e:res 7,(iy+#12),h:res 7,(iy+#12),l:res 7,(iy+#12):res 7,(iy+#12),a::set 0,(iy+#12),b:set 0,(iy+#12),c:set 0,(iy+#12),d:set 0,(iy+#12),e:set 0,(iy+#12),h:set 0,(iy+#12),l:set 0,(iy+#12):set 0,(iy+#12),a::set 1,(iy+#12),b:set 1,(iy+#12),c:set 1,(iy+#12),d:set 1,(iy+#12),e:set 1,(iy+#12),h:set 1,(iy+#12),l:set 1,(iy+#12):set 1,(iy+#12),a::set 2,(iy+#12),b:set 2,(iy+#12),c:set 2,(iy+#12),d:set 2,(iy+#12),e:set 2,(iy+#12),h:set 2,(iy+#12),l:set 2,(iy+#12):set 2,(iy+#12),a::set 3,(iy+#12),b:set 3,(iy+#12),c:set 3,(iy+#12),d:set 3,(iy+#12),e:set 3,(iy+#12),h:set 3,(iy+#12),l:set 3,(iy+#12):set 3,(iy+#12),a::set 4,(iy+#12),b:set 4,(iy+#12),c:set 4,(iy+#12),d:set 4,(iy+#12),e:set 4,(iy+#12),h:set 4,(iy+#12),l:set 4,(iy+#12):set 4,(iy+#12),a::set 5,(iy+#12),b:set 5,(iy+#12),c:set 5,(iy+#12),d:set 5,(iy+#12),e:set 5,(iy+#12),h:set 5,(iy+#12),l:set 5,(iy+#12):set 5,(iy+#12),a::set 6,(iy+#12),b:set 6,(iy+#12),c:set 6,(iy+#12),d:set 6,(iy+#12),e:set 6,(iy+#12),h:set 6,(iy+#12),l:set 6,(iy+#12):set 6,(iy+#12),a::set 7,(iy+#12),b:set 7,(iy+#12),c:set 7,(iy+#12),d:set 7,(iy+#12),e:set 7,(iy+#12),h:set 7,(iy+#12),l:set 7,(iy+#12):set 7,(iy+#12),a:"
+
+void RasmAutotest(void)
 {
 	#undef FUNC
-	#define FUNC "RasmTest"
+	#define FUNC "RasmAutotest"
 
 	unsigned char *opcode=NULL;
-	int opcodelen,ret,i;
-
-	ret=RasmAssemble("ld a,5\ndec a ; gruik\ndefb 'roudoudou'\n",strlen("ld a,5\ndec a ; gruik\ndefb 'roudoudou'\n"),&opcode,&opcodelen);
-
-	if (!ret) {
-		for (i=0;i<opcodelen;i++) {
-			printf("%02X(%c) ",opcode[i],opcode[i]>=32?opcode[i]:'.');
-		}
-		printf("\n");
-	}
+	int opcodelen,ret;
+	char *minicode;
+	
+	minicode=MemMalloc(4);minicode[0]=' ';minicode[1]='n';minicode[2]='o';minicode[3]='p';
+	//int RasmAssemble(const char *datain, int lenin, unsigned char **dataout, int *lenout)
+	ret=RasmAssemble(minicode,4,&opcode,&opcodelen);
+	if (!ret && opcodelen==1 && opcode[0]==0x0) {} else {printf("Autotest 001 ERROR\n");exit(-1);}
+	MemFree(opcode);opcode=NULL;
+	ret=RasmAssemble("ld a,5\n",strlen("ld a,5\n"),&opcode,&opcodelen);
+	if (!ret && opcodelen==2 && opcode[0]==0x3E && opcode[1]==5) {} else {printf("Autotest 002 ERROR\n");exit(-1);}
+	MemFree(opcode);opcode=NULL;
+	ret=RasmAssemble(AUTOTEST_MACRO,strlen(AUTOTEST_MACRO),&opcode,&opcodelen);
+	if (!ret) {} else {printf("Autotest 003 ERROR (imbricated macros)\n");exit(-1);}
+	MemFree(opcode);opcode=NULL;	
+	ret=RasmAssemble(AUTOTEST_OPCODES,strlen(AUTOTEST_OPCODES),&opcode,&opcodelen);
+	if (!ret) {} else {printf("Autotest 004 ERROR (all opcodes)\n");exit(-1);}
+	MemFree(opcode);opcode=NULL;
+	
+	printf("All internal tests OK\n");
+	exit(0);
 }
-
 
 
 /******************************************************
@@ -8339,7 +8429,7 @@ unsigned char *LZ49_encode_legacy(unsigned char *data, int length, int *retlengt
 	int maxoffset=0,maxlength,matchlength,literal=0,literaloffset=1;
 	unsigned char *odata=NULL;
 	
-	odata=MemMalloc((size_t)length*1.5+10);
+	odata=MemMalloc((size_t)(length*1.5+10));
 	if (!odata) {
 		fprintf(stderr,"malloc(%.0lf) - memory full\n",(size_t)length*1.5+10);
 		exit(-1);
@@ -8394,6 +8484,8 @@ unsigned char *LZ49_encode_legacy(unsigned char *data, int length, int *retlengt
 	semi-generic body of program
 ***************************************/
 
+#ifndef INTEGRATED_ASSEMBLY
+
 /*
 	Usage
 	display the mandatory parameters
@@ -8403,16 +8495,18 @@ void Usage()
 	#undef FUNC
 	#define FUNC "Usage"
 	
-	printf("%.*s.exe v0.60 (c) 2017 Edouard BERGE\n",(int)(sizeof(__FILENAME__)-3),__FILENAME__);
+	printf("%.*s.exe v0.61 (c) 2017 Edouard BERGE\n",(int)(sizeof(__FILENAME__)-3),__FILENAME__);
+	#ifndef NO_3RD_PARTIES
 	printf("LZ4 (c) 2011 by Yann Collet\n");
 	printf("ZX7 (c) 2012 by Einar Saukas\n");
 	printf("Exomizer 2 (c) 2005 by Magnus Lind\n");
+	#endif
 	printf("(use -n option to display all licenses)\n");
 	printf("\n");
 	printf("syntax: rasm <inputfile> [options]\n");
 	printf("\n");
 	printf("filename options:\n");
-	printf("-o  <outputfile radix> choose a common radix for every files (.bin, .cpr, .sym)\n");
+	printf("-o  <outputfile radix>   choose a common radix for every files (bin,cpr,sym)\n");
 	printf("-ob <binary filename>    choose a full filename for binary output\n");
 	printf("-oc <cartridge filename> choose a full filename for cartridge output\n");
 	printf("-os <symbol filename>    choose a full filename for symbol output\n");
@@ -8476,6 +8570,7 @@ printf("arising from,  out of  or in connection  with  the\n");
 printf("software  or  the  use  or  other  dealings in the\n");
 printf("Software. »\n");
 
+#ifndef NO_3RD_PARTIES
 printf("\n\n\n\n");
 printf("******* license of LZ4 cruncher / sources were modified ***********\n\n\n\n");
 
@@ -8564,8 +8659,7 @@ printf(" *\n");
 printf(" *   4. The names of this software and/or it's copyright holders may not be\n");
 printf(" *   used to endorse or promote products derived from this software without\n");
 printf(" *   specific prior written permission.\n");
-
-
+#endif
 
 printf("\n\n");
 
@@ -8584,6 +8678,10 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 	#undef FUNC
 	#define FUNC "ParseOptions"
 	int i=0;
+
+	if (strcmp(argv[i],"-autotest")==0) {
+		RasmAutotest();
+	}
 	
 	if (argv[i][0]=='-')
 	{
@@ -8713,8 +8811,6 @@ void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *e
 	execute the main processing
 */
 
-
-#ifndef INTEGRATED_ASSEMBLY
 
 int main(int argc, char **argv)
 {

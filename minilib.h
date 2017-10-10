@@ -835,7 +835,7 @@ int FileWriteBinary(char *filename,char *data,int n)
 		int sr;
 		sr=_setmode(_fileno(last_id), _O_BINARY );
 		if (sr==-1) {
-			logerr("FATAL: cannot set binary modefor writing");
+			logerr("FATAL: cannot set binary mode for writing");
 			exit(ABORT_ERROR);
 		}				
 		#endif
@@ -982,7 +982,6 @@ char **_internal_readtextfile(char *filename)
 	char **lines_buffer=NULL;
 	unsigned char *bigbuffer;
 	int nb_lines=0,max_lines=0,i=0,e=0;
-	FILE *file_id;
 	int file_size;
 
 	bigbuffer=_internal_readbinaryfile(filename,&file_size);
