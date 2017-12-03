@@ -31,7 +31,9 @@
 #include<errno.h>
 #include<sys/timeb.h>
 
+#ifndef ARG_MAX
 #define ARG_MAX 8191
+#endif
 
 
 
