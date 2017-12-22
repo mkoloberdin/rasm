@@ -1,46 +1,32 @@
-/***
+#define RASM_VERSION "RASM v0.67"
 
-Rasm (roudoudou assembler) Z80 assembler v0.63
+/***
+Rasm (roudoudou assembler) Z80 assembler
 
 Check latest official release at: http://www.cpcwiki.eu/forum/programming/rasm-z80-assembler-in-beta/
 
 You may send requests/bugs in the same topic
 
---------------------------------------------------
-
+-----------------------------------------------------------------------------------------------------
 This software is using MIT "expat" license
 
 « Copyright © BERGE Edouard (roudoudou)
 
-Permission  is  hereby  granted,  free  of charge,
-to any person obtaining a copy  of  this  software
-and  associated  documentation/source   files   of
-RASM, to deal in the Software without restriction,
-including without limitation the  rights  to  use,
-copy,   modify,   merge,   publish,    distribute,
-sublicense,  and/or  sell  copies of the Software,
-and  to  permit  persons  to  whom the Software is
-furnished  to  do  so,  subject  to  the following
-conditions:
+Permission  is  hereby  granted,  free  of charge,to any person obtaining a copy  of  this  software
+and  associated  documentation/source   files   of RASM, to deal in the Software without restriction,
+including without limitation the  rights  to  use, copy,   modify,   merge,   publish,    distribute,
+sublicense,  and/or  sell  copies of the Software, and  to  permit  persons  to  whom the Software is
+furnished  to  do  so,  subject  to  the following conditions:
 
-The above copyright  notice  and  this  permission
-notice   shall   be  included  in  all  copies  or
+The above copyright  notice  and  this  permission notice   shall   be  included  in  all  copies  or
 substantial portions of the Software.
-The   Software   is   provided  "as is",   without
-warranty   of   any   kind,  express  or  implied,
-including  but  not  limited  to the warranties of
-merchantability,   fitness   for   a    particular
-purpose  and  noninfringement.  In  no event shall
-the  authors  or  copyright  holders be liable for
-any  claim, damages  or other  liability,  whether
-in  an  action  of  contract, tort  or  otherwise,
-arising from,  out of  or in connection  with  the
-software  or  the  use  or  other  dealings in the
+The   Software   is   provided  "as is",   without warranty   of   any   kind,  express  or  implied,
+including  but  not  limited  to the warranties of merchantability,   fitness   for   a    particular
+purpose  and  noninfringement.  In  no event shall the  authors  or  copyright  holders be liable for
+any  claim, damages  or other  liability,  whether in  an  action  of  contract, tort  or  otherwise,
+arising from,  out of  or in connection  with  the software  or  the  use  or  other  dealings in the
 Software. »
-
---------------------------------------------------
-
-
+-----------------------------------------------------------------------------------------------------
 
 Supported features:
 -------------------
@@ -77,7 +63,9 @@ sbc hl,bc
 @jump
 rend
 
-all complex undocumented instructions syntax:
+all complex and undocumented instructions syntax:
+out (c),0
+in f,(c)
 res 0,(ix+0),a
 bit 0,(ix+0),a
 sll (ix+0),a
@@ -150,11 +138,12 @@ buildcpr		cartridge output mode (default when using BANK)
 buildsna		snapshot output mode
 bank <nn>		in cartridge mode, select the bank where to write the code/data
 namebank <nn>,<str>	in cartridge mode, set a name for the bank (for verbose purpose)
+save	<name>,<off>,<size> save a binary file of <size> byte from <offset>
 
 Input file & compression directives
 read            include an ascii file
 include			include an ascii file
-incbin			include a binary file (extended parameters like Winape incbin directive: offset,size,offset_high)
+incbin			include a binary file (extended parameters like Winape incbin directive: offset,size,offset_high+overwrite check)
 inclz4			include a binary file and crunch with lz4
 incl48			include a binary file and crunch with lz48
 incl49			include a binary file and crunch with lz49
@@ -179,12 +168,16 @@ Ignored directives:
 list	        ignored
 nolist	        ignored
 brk             ignored
-run <nn>        ignored*
+
 
 Other directives
+run <nn>        ignored*
+nocode			disable byte output
+code			enable byte output when disabled
 let             this useless keyword is ignored like in locomotive Basic
 print			print var, text or expression
 stop			stop assembling
+assert <cond>   check condition and quit if not verified
 
 command line options:
 - symbol export in Winape/Pasmo format
@@ -193,7 +186,7 @@ command line options:
 - maxam compatibility (disable meaningless expression check)
 
 limitations:
-- unlimited sources/labels/variables/expressions size
+- unlimited sources/labels/variables/expressions size/memory workspaces
 - unlimited number of sources/labels/variables/expressions/loops
 - non crunched blocks cannot exceed memory size (64K in classic mode) before compression. It's planed to fix this.
 - Z80 instructions or directives cannot be used as label/variable
@@ -202,12 +195,12 @@ limitations:
 -----------------------------------------------------
 
 GCC compilation:
-cc rasm_v063.c -O2 -lm -lrt
+cc rasm_v065.c -O2 -lm -lrt
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v063.c -O2
+cl.exe rasm_v065.c -O2
 
 */
 
@@ -379,11 +372,58 @@ struct s_orgzone {
 	int nocode;
 };
 
+
+struct s_edsk_sector_global_struct {
+unsigned char track;
+unsigned char side;
+unsigned char id;
+unsigned char size;
+unsigned char st1;
+unsigned char st2;
+unsigned short int length;
+unsigned char *data;
+};
+
+struct s_edsk_track_global_struct  {
+int sectornumber;
+/* information purpose */
+int sectorsize;
+int gap3length;
+int fillerbyte;
+int datarate;
+int recordingmode;
+struct s_edsk_sector_global_struct *sector;
+};
+
+struct s_edsk_global_struct {
+int tracknumber;
+int sidenumber;
+int tracksize; /* DSK legacy */
+struct s_edsk_track_global_struct *track;
+};
+
+struct s_edsk_wrapper_entry {
+char filename[11];
+unsigned char blocks[16];
+unsigned char subcpt;
+unsigned char rc;
+};
+struct s_edsk_wrapper {
+char *edsk_filename;
+struct s_edsk_wrapper_entry entry[64];
+int nbentry;
+unsigned char blocks[178][1024]; /* DATA format */
+int face;
+};
+
 struct s_save {
 	int ibank;
 	int ioffset;
 	int isize;
 	int iw;
+	int amsdos;
+	int dsk;
+	char iwdskname;
 };
 
 struct s_repeat {
@@ -551,7 +591,10 @@ struct s_snapshot_chunks {
 	unsigned int chunksize;
 };
 
-
+struct s_breakpoint {
+	int address;
+	int bank;
+};
 
 struct s_assenv {
 	/* current memory */
@@ -563,6 +606,7 @@ struct s_assenv {
 	int forcecpr,bankmode,activebank,amsdos,forcesnapshot,packedbank;
 	struct s_snapshot snapshot;
 	int bankset[9];
+	int bankused[35];
 	/* parsing */
 	struct s_wordlist *wl;
 	int nbword;
@@ -587,6 +631,8 @@ struct s_assenv {
 	int il,ml;
 	struct s_crclabel_tree labeltree; /* fast label access */
 	char *module;
+	struct s_breakpoint *breakpoint;
+	int ibreakpoint,maxbreakpoint;
 	/* repeat */
 	struct s_repeat *repeat;
 	int ir,mr;
@@ -632,13 +678,17 @@ struct s_assenv {
 	char *outputfilename;
 	int export_sym,export_local;
 	int export_var,export_equ;
-	int export_sna;
+	int export_sna,export_brk;
 	char *symbol_name;
 	char *binary_name;
 	char *cartridge_name;
 	char *snapshot_name;
 	struct s_save *save;
 	int nbsave,maxsave;
+	struct s_edsk_wrapper *edsk_wrapper;
+	int nbedskwrapper,maxedskwrapper;
+	int edskoverwrite;
+	int checkmode;
 };
 
 struct s_asm_keyword {
@@ -712,6 +762,8 @@ struct s_math_keyword math_keyword[]={
 #define CRC_ELSE   0x3FF177A1
 #define CRC_ENDIF  0xCD5265DE
 #define CRC_IF     0x4BD52507
+#define CRC_IFDEF  0x4CB29DD6
+#define CRC_IFNDEF 0xD9AD0824
 #define CRC_IFNOT  0x4CCAC9F8
 #define CRC_WHILE  0xBC268FF1
 #define CRC_UNTIL  0xCC12A604
@@ -1122,6 +1174,46 @@ int GetCRC(char *label)
 	return crc;
 }
 
+int IsRegister(char *zeexpression)
+{
+	#undef FUNC
+	#define FUNC "IsRegister"
+
+	switch (GetCRC(zeexpression)) {
+		case CRC_F:if (strcmp(zeexpression,"F")==0) return 1; else return 0;
+		case CRC_I:if (strcmp(zeexpression,"I")==0) return 1; else return 0;
+		case CRC_R:if (strcmp(zeexpression,"R")==0) return 1; else return 0;
+		case CRC_A:if (strcmp(zeexpression,"A")==0) return 1; else return 0;
+		case CRC_B:if (strcmp(zeexpression,"B")==0) return 1; else return 0;
+		case CRC_C:if (strcmp(zeexpression,"C")==0) return 1; else return 0;
+		case CRC_D:if (strcmp(zeexpression,"D")==0) return 1; else return 0;
+		case CRC_E:if (strcmp(zeexpression,"E")==0) return 1; else return 0;
+		case CRC_H:if (strcmp(zeexpression,"H")==0) return 1; else return 0;
+		case CRC_L:if (strcmp(zeexpression,"L")==0) return 1; else return 0;
+		case CRC_BC:if (strcmp(zeexpression,"BC")==0) return 1; else return 0;
+		case CRC_DE:if (strcmp(zeexpression,"DE")==0) return 1; else return 0;
+		case CRC_HL:if (strcmp(zeexpression,"HL")==0) return 1; else return 0;
+		case CRC_IX:if (strcmp(zeexpression,"IX")==0) return 1; else return 0;
+		case CRC_IY:if (strcmp(zeexpression,"IY")==0) return 1; else return 0;
+		case CRC_SP:if (strcmp(zeexpression,"SP")==0) return 1; else return 0;
+		case CRC_AF:if (strcmp(zeexpression,"AF")==0) return 1; else return 0;
+		case CRC_XH:if (strcmp(zeexpression,"XH")==0) return 1; else return 0;
+		case CRC_XL:if (strcmp(zeexpression,"XL")==0) return 1; else return 0;
+		case CRC_YH:if (strcmp(zeexpression,"YH")==0) return 1; else return 0;
+		case CRC_YL:if (strcmp(zeexpression,"YL")==0) return 1; else return 0;
+		case CRC_HX:if (strcmp(zeexpression,"HX")==0) return 1; else return 0;
+		case CRC_LX:if (strcmp(zeexpression,"LX")==0) return 1; else return 0;
+		case CRC_HY:if (strcmp(zeexpression,"HY")==0) return 1; else return 0;
+		case CRC_LY:if (strcmp(zeexpression,"LY")==0) return 1; else return 0;
+		case CRC_IXL:if (strcmp(zeexpression,"IXL")==0) return 1; else return 0;
+		case CRC_IXH:if (strcmp(zeexpression,"IXH")==0) return 1; else return 0;
+		case CRC_IYL:if (strcmp(zeexpression,"IYL")==0) return 1; else return 0;
+		case CRC_IYH:if (strcmp(zeexpression,"IYH")==0) return 1; else return 0;
+		default:break;
+	}
+	return 0;
+}
+
 int StringIsMem(char *w)
 {
 	#undef FUNC
@@ -1268,6 +1360,66 @@ void ___output_set_limit(struct s_assenv *ae,int zelimit)
 		MaxError(ae);
 	}
 	ae->maxptr=limit;
+}
+
+unsigned char *MakeAMSDOSHeader(int minmem, int maxmem, char *amsdos_name) {
+	#undef FUNC
+	#define FUNC "MakeAMSDOSHeader"
+	
+	static unsigned char AmsdosHeader[128];
+	char *zepoint;
+	int checksum,i=0;
+	/***  cpcwiki			
+	Byte 00: User number
+	Byte 01 to 08: filename
+	Byte 09 bis 11: Extension
+	Byte 18: type-byte
+	Byte 21 and 22: loading address
+	Byte 24 and 25: file length
+	Byte 26 and 27: execution address for machine code programs
+	Byte 64 and 65: (file length)
+	Byte 67 and 68: checksum for byte 00 to byte 66
+	To calculate the checksum, just add byte 00 to byte 66 to each other.
+	*/
+	memset(AmsdosHeader,0,sizeof(AmsdosHeader));
+	AmsdosHeader[0]=0;
+	memcpy(AmsdosHeader+1,amsdos_name,11);
+
+	AmsdosHeader[18]=2; /* 0 basic 1 basic protege 2 binaire */
+	AmsdosHeader[19]=(maxmem-minmem)&0xFF;
+	AmsdosHeader[20]=(maxmem-minmem)>>8;
+	AmsdosHeader[21]=minmem&0xFF;
+	AmsdosHeader[22]=minmem>>8;
+	AmsdosHeader[24]=AmsdosHeader[19];
+	AmsdosHeader[25]=AmsdosHeader[20];
+	AmsdosHeader[26]=minmem&0xFF;
+	AmsdosHeader[27]=minmem>>8;
+	AmsdosHeader[64]=AmsdosHeader[19];
+	AmsdosHeader[65]=AmsdosHeader[20];
+	AmsdosHeader[66]=0;
+	
+	for (i=checksum=0;i<=66;i++) {
+		checksum+=AmsdosHeader[i];
+	}
+	AmsdosHeader[67]=checksum&0xFF;
+	AmsdosHeader[68]=checksum>>8;
+
+	/* garbage / shadow values from sector buffer? */
+	memcpy(AmsdosHeader+0x47,amsdos_name,8);
+	AmsdosHeader[0x4F]=0x24;
+	AmsdosHeader[0x50]=0x24;
+	AmsdosHeader[0x51]=0x24;
+	AmsdosHeader[0x52]=0xFF;
+	AmsdosHeader[0x54]=0xFF;
+	AmsdosHeader[0x57]=0x02;
+	AmsdosHeader[0x5A]=AmsdosHeader[21];
+	AmsdosHeader[0x5B]=AmsdosHeader[22];
+	AmsdosHeader[0x5D]=AmsdosHeader[24];
+	AmsdosHeader[0x5E]=AmsdosHeader[25];
+
+	sprintf(AmsdosHeader+0x47+17," generated by %s ",RASM_VERSION);
+
+	return AmsdosHeader;
 }
 
 void ExpressionFastTranslate(struct s_assenv *ae, char **ptr_expr, int fullreplace);
@@ -1420,6 +1572,81 @@ void InsertDicoToTree(struct s_assenv *ae, struct s_expr_dico *dico)
 	ObjectArrayAddDynamicValueConcat((void**)&curdicotree->dico,&curdicotree->ndico,&curdicotree->mdico,dico,sizeof(struct s_expr_dico));
 }
 
+unsigned char *SnapshotDicoInsert(char *symbol_name, int ptr, int *retidx)
+{
+	static unsigned char *subchunk=NULL;
+	static int subchunksize=0;
+	static int idx=0;
+	int symbol_len;
+	
+	if (retidx) {
+		if (symbol_name && strcmp(symbol_name,"FREE")==0) {
+			subchunksize=0;
+			idx=0;
+			MemFree(subchunk);
+		}
+		*retidx=idx;
+		return subchunk;
+	}
+	
+	if (idx+65536>subchunksize) {
+		subchunksize=subchunksize+65536;
+		subchunk=MemRealloc(subchunk,subchunksize);
+	}
+	
+	symbol_len=strlen(symbol_name);
+	if (symbol_len>255) symbol_len=255;
+	subchunk[idx++]=symbol_len;
+	memcpy(subchunk+idx,symbol_name,symbol_len);
+	idx+=symbol_len;
+	memset(subchunk+idx,0,6);
+	idx+=6;
+	subchunk[idx++]=(ptr&0xFF00)/256;
+	subchunk[idx++]=ptr&0xFF;
+	return NULL;
+}
+
+void SnapshotDicoTreeRecurse(struct s_crcdico_tree *lt)
+{
+	#undef FUNC
+	#define FUNC "SnapshottDicoTreeRecurse"
+
+	char symbol_line[1024];
+	int i;
+
+	for (i=0;i<256;i++) {
+		if (lt->radix[i]) {
+			SnapshotDicoTreeRecurse(lt->radix[i]);
+		}
+	}
+	if (lt->mdico) {
+		for (i=0;i<lt->ndico;i++) {
+			if (strcmp(lt->dico[i].name,"IX") && strcmp(lt->dico[i].name,"IY") && strcmp(lt->dico[i].name,"PI") && strcmp(lt->dico[i].name,"ASSEMBLER_RASM")) {
+				SnapshotDicoInsert(lt->dico[i].name,(int)floor(lt->dico[i].v+0.5),NULL);
+			}
+		}
+	}
+}
+unsigned char *SnapshotDicoTree(struct s_assenv *ae, int *retidx)
+{
+	#undef FUNC
+	#define FUNC "SnapshotDicoTree"
+
+	unsigned char *sc;
+	int idx;
+	int i;
+
+	for (i=0;i<256;i++) {
+		if (ae->dicotree.radix[i]) {
+			SnapshotDicoTreeRecurse(ae->dicotree.radix[i]);
+		}
+	}
+	
+	sc=SnapshotDicoInsert(NULL,0,&idx);
+	*retidx=idx;
+	return sc;
+}
+
 void ExportDicoTreeRecurse(struct s_crcdico_tree *lt, char *zefile, char *zeformat)
 {
 	#undef FUNC
@@ -1434,9 +1661,12 @@ void ExportDicoTreeRecurse(struct s_crcdico_tree *lt, char *zefile, char *zeform
 		}
 	}
 	if (lt->mdico) {
-		for (i=0;i<lt->ndico;i++) {(lt->dico[i].name);
-			sprintf(symbol_line,zeformat,lt->dico[i].name,(int)floor(lt->dico[i].v+0.5));
-			FileWriteLine(zefile,symbol_line);
+		for (i=0;i<lt->ndico;i++) {
+			if (strcmp(lt->dico[i].name,"IX") && strcmp(lt->dico[i].name,"IY") && strcmp(lt->dico[i].name,"PI") && strcmp(lt->dico[i].name,"ASSEMBLER_RASM")) {
+				snprintf(symbol_line,sizeof(symbol_line)-1,zeformat,lt->dico[i].name,(int)floor(lt->dico[i].v+0.5));
+				symbol_line[sizeof(symbol_line)-1]=0xD;
+				FileWriteLine(zefile,symbol_line);
+			}
 		}
 	}
 }
@@ -1513,7 +1743,13 @@ struct s_expr_dico *SearchDico(struct s_assenv *ae, char *dico, int crc)
 	}
 	return NULL;
 }
-
+/*
+struct s_crclabel_tree {
+	struct s_crclabel_tree *radix[256];
+	struct s_label *label;
+	int nlabel,mlabel;
+};
+*/
 void FreeLabelTreeRecurse(struct s_crclabel_tree *lt)
 {
 	#undef FUNC
@@ -1658,7 +1894,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	/* dictionnary */
 	struct s_expr_dico *curdic;
 	struct s_label *curlabel;
-	int minusptr,imkey,bank;
+	int minusptr,imkey,bank,page;
 	double curval;
 	/* dynamic isolation */
 	static int max_isolation_depth=0;
@@ -2043,14 +2279,26 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 							break;
 						} else {
 							/* getbank hack */
-							if (strncmp(varbuffer+minusptr,"{BANK}",6)==0) {
+							if (varbuffer[minusptr]!='{') {
+								bank=0;
+							} else if (strncmp(varbuffer+minusptr,"{BANK}",6)==0) {
 								bank=6;
-								//printf("BANKSearch -> %s\n",varbuffer+minusptr+bank);
+								page=0;
+								/* obligé de recalculer le CRC */
+								crc=GetCRC(varbuffer+minusptr+bank);
+							} else if (strncmp(varbuffer+minusptr,"{PAGE}",6)==0) {
+								bank=6;
+								page=1;
+								/* obligé de recalculer le CRC */
+								crc=GetCRC(varbuffer+minusptr+bank);
+							} else if (strncmp(varbuffer+minusptr,"{PAGESET}",9)==0) {
+								bank=9;
+								page=2;
 								/* obligé de recalculer le CRC */
 								crc=GetCRC(varbuffer+minusptr+bank);
 							} else {
-								//printf("regular_label search [%s]\n",varbuffer+minusptr);
-								bank=0;
+								rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is an unknown prefix!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+								MaxError(ae);
 							}
 							/* limited label translation while processing crunched blocks
 							   ae->curlz == current crunched block processed
@@ -2062,20 +2310,107 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 							if (curlabel) {
 								if (ae->stage<2) {
 									if (curlabel->lz==-1) {
-										if (bank) {
-											curval=curlabel->ibank;
-										} else {
+										if (!bank) {
 											curval=curlabel->ptr;
+										} else {
+											switch (page) {
+												case 2:
+													curval=(curlabel->ibank>>2)*8+2+0xC0;break;
+												case 1:
+												switch (curlabel->ibank) {
+													case 0 :case 1:case 2:case 3:curval=0xC0;break;
+													case 4 :curval=0xC4;break;
+													case 5 :curval=0xC5;break;
+													case 6 :curval=0xC6;break;
+													case 7 :curval=0xC7;break;
+													case 8 :curval=0xCC;break;
+													case 9 :curval=0xCD;break;
+													case 10:curval=0xCE;break;
+													case 11:curval=0xCF;break;
+													case 12:curval=0xD4;break;
+													case 13:curval=0xD5;break;
+													case 14:curval=0xD6;break;
+													case 15:curval=0xD7;break;
+													case 16:curval=0xDC;break;
+													case 17:curval=0xDD;break;
+													case 18:curval=0xDE;break;
+													case 19:curval=0xDF;break;
+													case 20:curval=0xE4;break;
+													case 21:curval=0xE5;break;
+													case 22:curval=0xE6;break;
+													case 23:curval=0xE7;break;
+													case 24:curval=0xEC;break;
+													case 25:curval=0xED;break;
+													case 26:curval=0xEE;break;
+													case 27:curval=0xEF;break;
+													case 28:curval=0xF4;break;
+													case 29:curval=0xF5;break;
+													case 30:curval=0xF6;break;
+													case 31:curval=0xF7;break;
+													case 32:curval=0xFC;break;
+													case 33:curval=0xFD;break;
+													case 34:curval=0xFE;break;
+													case 35:curval=0xFF;break;
+												}
+												break;
+												default:
+												case 0:
+												curval=curlabel->ibank;break;
+											}
 										}
 									} else {
 										/* label MUST be in the crunched block */
 										if (curlabel->iorgzone==ae->expression[didx].iorgzone && curlabel->ibank==ae->expression[didx].ibank && curlabel->lz<=ae->expression[didx].lz) {
-											if (bank) {
-												curval=curlabel->ibank;
-											} else {
+											if (!bank) {
 												curval=curlabel->ptr;
+											} else {
+												if (page) {
+													switch (page) {
+														case 2:
+															curval=(curlabel->ibank>>2)*8+2+0xC0;break;
+														case 1:
+														switch (curlabel->ibank) {
+															case 0 :case 1:case 2:case 3:curval=0xC0;break;
+															case 4 :curval=0xC4;break;
+															case 5 :curval=0xC5;break;
+															case 6 :curval=0xC6;break;
+															case 7 :curval=0xC7;break;
+															case 8 :curval=0xCC;break;
+															case 9 :curval=0xCD;break;
+															case 10:curval=0xCE;break;
+															case 11:curval=0xCF;break;
+															case 12:curval=0xD4;break;
+															case 13:curval=0xD5;break;
+															case 14:curval=0xD6;break;
+															case 15:curval=0xD7;break;
+															case 16:curval=0xDC;break;
+															case 17:curval=0xDD;break;
+															case 18:curval=0xDE;break;
+															case 19:curval=0xDF;break;
+															case 20:curval=0xE4;break;
+															case 21:curval=0xE5;break;
+															case 22:curval=0xE6;break;
+															case 23:curval=0xE7;break;
+															case 24:curval=0xEC;break;
+															case 25:curval=0xED;break;
+															case 26:curval=0xEE;break;
+															case 27:curval=0xEF;break;
+															case 28:curval=0xF4;break;
+															case 29:curval=0xF5;break;
+															case 30:curval=0xF6;break;
+															case 31:curval=0xF7;break;
+															case 32:curval=0xFC;break;
+															case 33:curval=0xFD;break;
+															case 34:curval=0xFE;break;
+															case 35:curval=0xFF;break;
+														}
+														break;
+														default:
+														case 0:
+														curval=curlabel->ibank;break;
+													}
+												}
 											}
-											curval=curlabel->ptr;
 										} else {
 											rasm_printf(ae,"[%s] Error line %d - Label [%s](%d) cannot be computed because it is located after the crunched zone %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx),varbuffer,curlabel->lz,ae->expression[didx].lz);
 											MaxError(ae);
@@ -2116,7 +2451,12 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 									ivar=0;
 									continue;
 								} else {
-									rasm_printf(ae,"[%s] Error line %d - in expression [%s]->[%s] (not found in variables,labels or aliases)\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer+minusptr);
+									/* in case the expression is a register */
+									if (IsRegister(varbuffer+minusptr)) {
+										rasm_printf(ae,"[%s] Error line %d - cannot use register %s in this context\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+									} else {
+										rasm_printf(ae,"[%s] Error line %d - in expression [%s]->[%s] (not found in variables,labels or aliases)\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer+minusptr);
+									}
 									MaxError(ae);
 									curval=0;
 								}
@@ -2846,14 +3186,398 @@ void PushExpression(struct s_assenv *ae,int iw,enum e_expression zetype)
 	}
 }
 
+/*
+The CP/M 2.2 directory has only one type of entry:
+
+UU F1 F2 F3 F4 F5 F6 F7 F8 T1 T2 T3 EX S1 S2 RC   .FILENAMETYP....
+AL AL AL AL AL AL AL AL AL AL AL AL AL AL AL AL   ................
+
+UU = User number. 0-15 (on some systems, 0-31). The user number allows multiple
+    files of the same name to coexist on the disc. 
+     User number = 0E5h => File deleted
+Fn - filename
+Tn - filetype. The characters used for these are 7-bit ASCII.
+       The top bit of T1 (often referred to as T1') is set if the file is 
+     read-only.
+       T2' is set if the file is a system file (this corresponds to "hidden" on 
+     other systems). 
+EX = Extent counter, low byte - takes values from 0-31
+S2 = Extent counter, high byte.
+
+      An extent is the portion of a file controlled by one directory entry.
+    If a file takes up more blocks than can be listed in one directory entry,
+    it is given multiple entries, distinguished by their EX and S2 bytes. The
+    formula is: Entry number = ((32*S2)+EX) / (exm+1) where exm is the 
+    extent mask value from the Disc Parameter Block.
+
+S1 - reserved, set to 0.
+RC - Number of records (1 record=128 bytes) used in this extent, low byte.
+    The total number of records used in this extent is
+
+    (EX & exm) * 128 + RC
+
+    If RC is 80h, this extent is full and there may be another one on the disc.
+    File lengths are only saved to the nearest 128 bytes.
+
+AL - Allocation. Each AL is the number of a block on the disc. If an AL
+    number is zero, that section of the file has no storage allocated to it
+    (ie it does not exist). For example, a 3k file might have allocation 
+    5,6,8,0,0.... - the first 1k is in block 5, the second in block 6, the 
+    third in block 8.
+     AL numbers can either be 8-bit (if there are fewer than 256 blocks on the
+    disc) or 16-bit (stored low byte first). 
+*/
+int EDSK_getblockid(int *fb) {
+	#undef FUNC
+	#define FUNC "EDSK_getblockid"
+	
+	int i;
+	for (i=0;i<180;i++) {
+		if (fb[i]) {
+			return i;
+		}
+	}
+	return -1;
+}
+int EDSK_getdirid(struct s_edsk_wrapper *curwrap) {
+	#undef FUNC
+	#define FUNC "EDSK_getdirid"
+	
+	int ie;
+	for (ie=0;ie<64;ie++) {
+		if (curwrap->entry[ie].rc==0xE5 || curwrap->entry[ie].rc==0x00) return ie;
+	}
+	return -1;
+}
+char *MakeAMSDOS_name(char *filename)
+{
+	#undef FUNC
+	#define FUNC "MakeAMSDOS_name"
+
+	static char amsdos_name[12];
+	int i,ia;
+
+	for (i=0;i<11;i++) amsdos_name[i]=0x20;
+	i=0;while (filename[i]!=0 && filename[i]!='.' && i<8) {amsdos_name[i]=filename[i];i++;}
+	while (filename[i]!=0 && filename[i]!='.') i++;
+	if (filename[i]=='.') {
+		i++;ia=0;
+		while (filename[i]!=0 && ia<3) amsdos_name[8+ia++]=filename[i++];
+	}
+	amsdos_name[11]=0;
+//printf("[%s]->[%s]\n",filename,amsdos_name);
+	return amsdos_name;
+}
+int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned char *indata,int insize, int offset)
+{
+	#undef FUNC
+	#define FUNC "EDSK_addfile"
+
+	struct s_edsk_wrapper newwrap={0},*curwrap=NULL;
+	char amsdos_name[12];
+	int idsk,j,i,ia,ib,ie,filesize,fsector,idxdata;
+	int fb[180],rc,idxb;
+	unsigned char *data=NULL;
+	int size=0;
+	int firstblock,lastblock;
+
+	for (i=0;i<ae->nbedskwrapper;i++) {
+		if (!strcmp(ae->edsk_wrapper[i].edsk_filename,edskfilename)) {
+			curwrap=&ae->edsk_wrapper[i];
+			break;
+		}
+	}
+	if (i==ae->nbedskwrapper) {
+		ObjectArrayAddDynamicValueConcat((void**)&ae->edsk_wrapper,&ae->nbedskwrapper,&ae->maxedskwrapper,&newwrap,sizeof(struct s_edsk_wrapper));
+		curwrap=&ae->edsk_wrapper[ae->nbedskwrapper-1];
+		curwrap->edsk_filename=TxtStrDup(edskfilename);
+		memset(curwrap->entry,0xE5,sizeof(struct s_edsk_wrapper_entry)*64);
+	}
+	/* update struct */
+	size=insize+128;
+	data=MemMalloc(size);
+	memcpy(amsdos_name,MakeAMSDOS_name(filename),11);
+	memcpy(data,MakeAMSDOSHeader(offset,offset+insize,amsdos_name),128);
+	memcpy(data+128,indata,insize);
+
+	/* overwrite check */
+	for (i=0;i<curwrap->nbentry;i++) {
+		if (!strcmp(curwrap->entry[i].filename,amsdos_name)) {
+			if (!ae->edskoverwrite) {
+				rasm_printf(ae,"Cannot save [%s] in edsk [%s] with overwrite disabled as the file already exists\n",filename,edskfilename);
+				return 0;
+			} else {
+				/* overwriting previous file */
+				printf("dbg: overwriting previous file entry [%s] in dsk\n",filename);
+				memset(&curwrap->entry[i],0xE5,sizeof(struct s_edsk_wrapper_entry));
+			}
+		}
+	}
+	/* find free blocks */
+	fb[0]=fb[1]=0;
+	for (i=2;i<180;i++) fb[i]=1;
+	for (i=0;i<curwrap->nbentry;i++) {
+		if (curwrap->entry[i].rc!=0xE5 && curwrap->entry[i].rc!=0) {
+			/* nombre de blocs à lire */
+			rc=curwrap->entry[i].rc/8;
+			if (curwrap->entry[i].rc%8) rc++; /* ajustement en lecture */
+			/* mark as used */
+			for (j=0;j<rc;j++) {
+				fb[curwrap->entry[i].blocks[j]]=0;
+			}
+		}
+	}
+	/* set directory, blocks and data in blocks */
+	firstblock=-1;
+	lastblock=-1;
+	filesize=size;
+	idxdata=0;
+	ia=0;
+	while (filesize>0) {
+		if (filesize>16384) {
+			/* extended entry */
+			if ((ie=EDSK_getdirid(curwrap))==-1)  {
+				rasm_printf(ae,"FATAL ERROR edsk [%s] DIRECTORY FULL\n",edskfilename);
+	MemFree(data);
+				return 0;
+			}
+			if (curwrap->nbentry<=ie) curwrap->nbentry=ie+1;
+			idxb=0;
+			for (i=0;i<16;i++) {
+				if ((ib=EDSK_getblockid(fb))==-1) {
+					rasm_printf(ae,"FATAL ERROR edsk [%s] DISK FULL\n",edskfilename);
+	MemFree(data);
+					return 0;
+				} else {
+					if (firstblock==-1) firstblock=ib;
+					lastblock=ib;
+
+					memcpy(curwrap->blocks[ib],data+idxdata,1024);
+					idxdata+=1024;
+					filesize-=1024;
+					fb[ib]=0;
+					curwrap->entry[ie].blocks[idxb++]=ib;
+				}
+			}
+			memcpy(curwrap->entry[ie].filename,amsdos_name,11);
+			curwrap->entry[ie].subcpt=ia;
+			curwrap->entry[ie].rc=0x80;
+			ia++;
+			idxb=0;
+		} else {
+			/* last entry */
+			if ((ie=EDSK_getdirid(curwrap))==-1)  {
+				rasm_printf(ae,"FATAL ERROR edsk [%s] DIRECTORY FULL\n",edskfilename);
+	MemFree(data);
+				return 0;
+			}
+			if (curwrap->nbentry<=ie) curwrap->nbentry=ie+1;
+			/* calcul du nombre de sous blocs de 128 octets */
+			curwrap->entry[ie].rc=filesize/128;
+			if (filesize%128) {
+				curwrap->entry[ie].rc+=1;
+			}
+			idxb=0;
+			for (i=0;i<16 && filesize>0;i++) {
+				if ((ib=EDSK_getblockid(fb))==-1) {
+					rasm_printf(ae,"FATAL ERROR edsk [%s] DISK FULL\n",edskfilename);
+	MemFree(data);
+					return 0;
+				} else {
+					if (firstblock==-1) firstblock=ib;
+					lastblock=ib;
+
+					memcpy(curwrap->blocks[ib],&data[idxdata],filesize>1024?1024:filesize);
+					idxdata+=1024;
+					filesize-=1024;
+					fb[ib]=0;
+					curwrap->entry[ie].blocks[idxb++]=ib;
+				}
+			}
+			filesize=0;
+			memcpy(curwrap->entry[ie].filename,amsdos_name,11);
+			curwrap->entry[ie].subcpt=ia;
+		}
+	}
+
+#if 0
+	/* AMSDOS stuff to get a regular AMSDOS header */
+	curwrap->blocks[firstblock][16]=firstblock;
+	curwrap->blocks[firstblock][17]=lastblock;
+	curwrap->blocks[firstblock][23]=curwrap->blocks[firstblock][16];
+#endif
+	MemFree(data);
+	return 1;
+}
+
+void EDSK_build_amsdos_directory(struct s_edsk_wrapper *face)
+{
+	#undef FUNC
+	#define FUNC "EDSK_build_directory"
+	
+	unsigned char amsdosdir[2048]={0};
+	int i,idx=0,b;
+
+	if (!face) return;
+	
+	
+//printf("build amsdos dir with %d entries\n",face->nbentry);	
+	memset(amsdosdir,0xE5,2048);
+	for (i=0;i<face->nbentry;i++) {
+		if (face->entry[i].rc && face->entry[i].rc!=0xE5) {
+			amsdosdir[idx]=0;
+			memcpy(amsdosdir+idx+1,face->entry[i].filename,11);
+			amsdosdir[idx+12]=face->entry[i].subcpt;
+			amsdosdir[idx+13]=0;
+			amsdosdir[idx+14]=0;
+			amsdosdir[idx+15]=face->entry[i].rc;
+			//printf("%-11.11s [%02X.%02X] blocks:",amsdosdir+idx+1,amsdosdir[idx+12],amsdosdir[idx+15]);
+			for (b=0;b<16;b++) {
+				if (face->entry[i].blocks[b]!=0xE5) {
+					amsdosdir[idx+16+b]=face->entry[i].blocks[b];
+					//printf("%02X.",amsdosdir[idx+16+b]);
+					//printf("%02X.",face->entry[i].blocks[b]);
+				} else {
+					amsdosdir[idx+16+b]=0;
+				}
+			}
+			//printf("\n");
+		}
+		idx+=32;
+	}
+	
+	memcpy(face->blocks[0],amsdosdir,1024);
+	memcpy(face->blocks[1],amsdosdir+1024,1024);
+}
+void EDSK_write_file(struct s_assenv *ae,struct s_edsk_wrapper *faceA,struct s_edsk_wrapper *faceB)
+{
+	#undef FUNC
+	#define FUNC "EDSK_write_file"
+
+	struct s_edsk_wrapper emptyface={0};
+	unsigned char header[256]={0};
+	unsigned char trackblock[256]={0};
+	int idblock,blockoffset;
+	int i,t;
+	
+	if (!faceA && !faceB) return;
+	
+	/* création des deux blocs du directory par face */
+	EDSK_build_amsdos_directory(faceA);
+	EDSK_build_amsdos_directory(faceB);
+	
+	/* écriture header */
+	strcpy(header,"EXTENDED CPC DSK File\r\nDisk-Info\r\n");
+	strcpy(header+0x22,RASM_VERSION);
+	header[0x30]=40;
+	if (!faceA) {
+		faceA=&emptyface;
+		faceA->edsk_filename=TxtStrDup(faceB->edsk_filename);
+	}
+	if (faceB!=NULL) header[0x31]=2; else header[0x31]=1;
+	for (i=0;i<header[0x30]*header[0x31];i++) header[0x34+i]=19; /* tracksize=(9*512+256)/256 */
+	FileWriteBinary(faceA->edsk_filename,header,256);
+	
+	/* écriture des pistes */
+	for (t=0;t<40;t++) {
+		strcpy(trackblock,"Track-Info\r\n");
+		trackblock[0x10]=t;
+		trackblock[0x11]=0;
+		trackblock[0x14]=2;
+		trackblock[0x15]=9;
+		trackblock[0x16]=0x4E;
+		trackblock[0x17]=0xE5;
+		for (i=0;i<9;i++) {
+			trackblock[0x18+i*8+0]=trackblock[0x10];
+			trackblock[0x18+i*8+1]=trackblock[0x11];
+			trackblock[0x18+i*8+2]=i+0xC1;
+			trackblock[0x18+i*8+3]=2;
+			trackblock[0x18+i*8+4]=0;
+			trackblock[0x18+i*8+5]=0;
+			trackblock[0x18+i*8+6]=0;
+			trackblock[0x18+i*8+7]=2;
+		}
+		/* écriture du track info */
+		FileWriteBinary(faceA->edsk_filename,trackblock,256);
+		/* écriture des secteurs */
+		idblock=t*9/2;
+		blockoffset=((t*9)%2)*512;
+		for (i=0;i<9;i++) {
+			FileWriteBinary(faceA->edsk_filename,&faceA->blocks[idblock][0]+blockoffset,512);
+			blockoffset+=512;
+			if (blockoffset>=1024) {
+				blockoffset=0;
+				idblock++;
+			}
+		}
+	
+		if (faceB) {
+			trackblock[0x11]=1;
+			for (i=0;i<9;i++) {
+				trackblock[0x18+i*8+0]=trackblock[0x10];
+				trackblock[0x18+i*8+1]=trackblock[0x11];
+			}
+			/* écriture du track info */
+			FileWriteBinary(faceB->edsk_filename,trackblock,256);
+			/* écriture des secteurs */
+			idblock=t*9/2;
+			blockoffset=((t*9)%2)*512;
+			for (i=0;i<9;i++) {
+				FileWriteBinary(faceB->edsk_filename,&faceB->blocks[idblock][0]+blockoffset,512);
+				blockoffset+=512;
+				if (blockoffset>=1024) {
+					blockoffset=0;
+					idblock++;
+				}
+			}
+		}
+	}
+	FileWriteBinaryClose(faceA->edsk_filename);
+	rasm_printf(ae,"Write edsk file %s\n",faceA->edsk_filename);
+}
+void EDSK_write(struct s_assenv *ae)
+{
+	#undef FUNC
+	#define FUNC "EDSK_write"
+
+	struct s_edsk_wrapper *faceA,*faceB;
+	char *edskfilename;
+	int i,j;
+	
+	/* on passe en revue toutes les structs */
+	for (i=0;i<ae->nbedskwrapper;i++) {
+		/* already done */
+		if (ae->edsk_wrapper[i].face==-1) continue;
+		
+		switch (ae->edsk_wrapper[i].face) {
+			default:
+			case 0:faceA=&ae->edsk_wrapper[i];faceB=NULL;break;
+			case 1:faceA=NULL;faceB=&ae->edsk_wrapper[i];break;
+		}
+		/* doit-on fusionner avec une autre face? */
+		for (j=i+1;j<ae->nbedskwrapper;j++) {
+			if (!strcmp(ae->edsk_wrapper[i].edsk_filename,ae->edsk_wrapper[j].edsk_filename)) {
+				/* found another face for the floppy */
+				switch (ae->edsk_wrapper[j].face) {
+					default:
+					case 0:faceA=&ae->edsk_wrapper[j];break;
+					case 1:faceB=&ae->edsk_wrapper[j];break;
+				}
+			}
+		}
+		EDSK_write_file(ae,faceA,faceB);
+	}
+}
 void PopAllSave(struct s_assenv *ae)
 {
 	#undef FUNC
 	#define FUNC "PopAllSave"
 	
+	unsigned char *AmsdosHeader;
+	char *dskfilename;
 	char *filename;
 	int offset,size;
-	int is;
+	int i,is,erreur=0;
 	
 	for (is=0;is<ae->nbsave;is++) {
 		/* avoid quotes */
@@ -2866,11 +3590,39 @@ void PopAllSave(struct s_assenv *ae)
 		offset=RoundComputeExpression(ae,ae->wl[ae->save[is].ioffset].w,0,0,0);
 		ExpressionFastTranslate(ae,&ae->wl[ae->save[is].isize].w,0);
 		size=RoundComputeExpression(ae,ae->wl[ae->save[is].isize].w,0,0,0);
-		rasm_printf(ae,"Write binary file %s (%d byte%s)\n",filename,size,size>1?"s":"");
-		FileRemoveIfExists(filename);
-		FileWriteBinary(filename,(char*)ae->mem[ae->save[is].ibank]+offset,size);
-		FileWriteBinaryClose(filename);
+		
+		/* DSK management */
+		if (ae->save[is].dsk) {
+			if (ae->save[is].iwdskname!=-1) {
+				/* obligé de dupliquer à cause du reuse */
+				dskfilename=TxtStrDup(ae->wl[ae->save[is].iwdskname].w);
+				dskfilename[strlen(dskfilename)-1]=0;
+				
+				if (!EDSK_addfile(ae,dskfilename+1,filename,(char*)ae->mem[ae->save[is].ibank]+offset,size,offset)) {
+					erreur++;
+					break;
+				}
+				MemFree(dskfilename);
+			}
+		} else {
+			/* output file on filesystem */
+			rasm_printf(ae,"Write binary file %s (%d byte%s)\n",filename,size,size>1?"s":"");
+			FileRemoveIfExists(filename);
+			if (ae->save[is].amsdos) {
+				AmsdosHeader=MakeAMSDOSHeader(offset,offset+size,MakeAMSDOS_name(filename));
+				FileWriteBinary(filename,AmsdosHeader,128);
+			}		
+			FileWriteBinary(filename,(char*)ae->mem[ae->save[is].ibank]+offset,size);
+			FileWriteBinaryClose(filename);
+		}
 	}
+	if (!erreur) EDSK_write(ae);
+	
+	for (i=0;i<ae->nbedskwrapper;i++) {
+		MemFree(ae->edsk_wrapper[i].edsk_filename);
+	}
+	if (ae->maxedskwrapper) MemFree(ae->edsk_wrapper);
+
 	if (ae->nbsave) {
 		MemFree(ae->save);
 	}
@@ -5543,7 +6295,7 @@ void OverWriteCheck(struct s_assenv *ae)
 	i=ae->io-1; {
 		if (ae->orgzone[i].memstart!=ae->orgzone[i].memend) {
 			for (j=0;j<ae->io-1;j++) {
-				if (ae->orgzone[j].memstart!=ae->orgzone[j].memend) {
+				if (ae->orgzone[j].memstart!=ae->orgzone[j].memend && !ae->orgzone[j].nocode) {
 					if (ae->orgzone[i].ibank==ae->orgzone[j].ibank) {
 						if ((ae->orgzone[i].memstart>=ae->orgzone[j].memstart && ae->orgzone[i].memstart<ae->orgzone[j].memend)
 							|| (ae->orgzone[i].memend>ae->orgzone[j].memstart && ae->orgzone[i].memend<ae->orgzone[j].memend)
@@ -5621,6 +6373,13 @@ void __BANK(struct s_assenv *ae) {
 			rasm_printf(ae,"[%s] FATAL Error line %d - Bank selection must be from 0 to 35 in snapshot mode\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 			exit(2);
 		}
+		/* bankset control */
+		if (ae->forcesnapshot && ae->bankset[ae->activebank/4]) {
+			rasm_printf(ae,"[%s] Error line %d - Bank was already select by a previous BANKSET %d\n",GetCurrentFile(ae),ae->wl[ae->idx].l,(int)ae->activebank/4);
+			MaxError(ae);
+		} else {
+			ae->bankused[ae->activebank]=1;
+		}
 		ae->idx++;
 	} else {
 		rasm_printf(ae,"[%s] Error line %d - BANK directive need one integer parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
@@ -5643,6 +6402,7 @@ void __BANK(struct s_assenv *ae) {
 
 void __BANKSET(struct s_assenv *ae) {
 	struct s_orgzone orgzone={0};
+	int ibank;
 
 	__internal_UpdateLZBlockIfAny(ae);
 
@@ -5664,17 +6424,24 @@ void __BANKSET(struct s_assenv *ae) {
 		ae->activebank=RoundComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,0);
 		ae->activebank*=4;
 		if (ae->forcesnapshot && (ae->activebank<0 || ae->activebank>35)) {
-			rasm_printf(ae,"[%s] FATAL Error line %d - Bank selection must be from 0 to 8 in snapshot mode\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			rasm_printf(ae,"[%s] FATAL Error line %d - Bank set selection must be from 0 to 8 in snapshot mode\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 			exit(2);
 		}
-		ae->bankset[ae->activebank/4]=1; /* pas très heureux mais bon... */
+		/* control */
+		ibank=ae->activebank/4;
+		if (ae->bankused[ibank] || ae->bankused[ibank+1]|| ae->bankused[ibank+2]|| ae->bankused[ibank+3]) {
+			rasm_printf(ae,"[%s] Error line %d - Cannot BANKSET because bank was already selected in single page mode\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			MaxError(ae);
+		} else {	
+			ae->bankset[ae->activebank/4]=1; /* pas très heureux mais bon... */
+		}
 		ae->idx++;
 	} else {
-		rasm_printf(ae,"[%s] Error line %d - BANK directive need one integer parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		rasm_printf(ae,"[%s] Error line %d - BANKSET directive need one integer parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
 	}
 	if (ae->lz>=0) {
-		rasm_printf(ae,"[%s] Warning line %d - LZ section wasn't closed before a new BANK directive\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		rasm_printf(ae,"[%s] Warning line %d - LZ section wasn't closed before a new BANKSET directive\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		__LZCLOSE(ae);
 	}
 
@@ -6015,7 +6782,18 @@ void __RUN(struct s_assenv *ae) {
 	ae->snapshot.registers.LPC=mypc&0xFF;
 	ae->snapshot.registers.HPC=(mypc>>8)&0xFF;
 }
-
+void __BREAKPOINT(struct s_assenv *ae) {
+	struct s_breakpoint breakpoint={0};
+	
+	if (ae->wl[ae->idx].t) {
+		breakpoint.address=ae->codeadr;
+		if (ae->activebank>3) breakpoint.bank=1;
+		ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));
+	} else {
+		rasm_printf(ae,"[%s] Error line %d - BREAKPOINT does not need parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	}
+}
 void __SETCPC(struct s_assenv *ae) {
 	int mycpc;
 	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
@@ -6427,6 +7205,61 @@ void __IF(struct s_assenv *ae) {
 	}
 }
 
+/* test if a label or a variable exists */
+void __IFDEF(struct s_assenv *ae) {
+	int rexpr,crc;
+	
+	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
+		crc=GetCRC(ae->wl[ae->idx+1].w);
+		if ((SearchDico(ae,ae->wl[ae->idx+1].w,crc))!=NULL) {
+			rexpr=1;
+		} else {
+			if ((SearchLabel(ae,ae->wl[ae->idx+1].w,crc))!=NULL) {
+				rexpr=1;
+			} else {
+				if ((SearchAlias(ae,crc,ae->wl[ae->idx+1].w))!=-1) {
+					rexpr=1;
+				} else {
+					rexpr=0;
+				}
+			}
+		}
+		IntArrayAddDynamicValueConcat(&ae->ifthen,&ae->ii,&ae->mi,rexpr);
+		ae->idx++;
+	} else {
+		rasm_printf(ae,"[%s] FATAL Error line %d, IFDEF need one variable or label\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		exit(2);
+	}
+}
+void __IFNDEF(struct s_assenv *ae) {
+	struct s_expr_dico *curdic=NULL;
+	struct s_label *curlabel=NULL;
+	int rexpr,crc;
+	
+	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
+		crc=GetCRC(ae->wl[ae->idx+1].w);
+		if ((SearchDico(ae,ae->wl[ae->idx+1].w,crc))!=NULL) {
+			rexpr=0;
+		} else {
+			if ((SearchLabel(ae,ae->wl[ae->idx+1].w,crc))!=NULL) {
+				rexpr=0;
+			} else {
+				if ((SearchAlias(ae,crc,ae->wl[ae->idx+1].w))!=-1) {
+					rexpr=0;
+				} else {
+					rexpr=1;
+				}
+			}
+		}
+		IntArrayAddDynamicValueConcat(&ae->ifthen,&ae->ii,&ae->mi,rexpr);
+		ae->idx++;
+	} else {
+		rasm_printf(ae,"[%s] FATAL Error line %d, IFNDEF need one variable or label\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		exit(2);
+	}
+}
+
+
 void __SWITCH(struct s_assenv *ae) {
 	struct s_switchcase curswitch={0};
 
@@ -6698,7 +7531,7 @@ void __MEMSPACE(struct s_assenv *ae) {
 
 
 void __HEXBIN(struct s_assenv *ae) {
-	int hbinidx;
+	int hbinidx,overwritecheck=1;
 	unsigned int offset=0,idx;
 	int size=0;
 	
@@ -6711,14 +7544,27 @@ void __HEXBIN(struct s_assenv *ae) {
 			if (!ae->wl[ae->idx+2].t) {
 				ExpressionFastTranslate(ae,&ae->wl[ae->idx+3].w,1);
 				size=RoundComputeExpressionCore(ae,ae->wl[ae->idx+3].w,ae->codeadr,0);
-				if (size<-65535 || size==0 || size>65536) {
+				if (size<-65535 || size>65536) {
 					rasm_printf(ae,"[%s] Error line %d - INCBIN invalid size\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 					MaxError(ae);
+				}
+				if (size==0) {
+					/* rien */
 				}
 				if (!ae->wl[ae->idx+3].t) {
 					ExpressionFastTranslate(ae,&ae->wl[ae->idx+4].w,1);
 					offset+=65536*RoundComputeExpressionCore(ae,ae->wl[ae->idx+4].w,ae->codeadr,0);
-					ae->idx+=4;
+					if (!ae->wl[ae->idx+4].t) {
+						if (strcmp(ae->wl[ae->idx+5].w,"OFF")==0) {
+							overwritecheck=0;
+						} else {
+							rasm_printf(ae,"[%s] Error line %d - INCBIN invalid overwrite value. Must be 'OFF' or nothing\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+							MaxError(ae);
+						}
+						ae->idx+=5;
+					} else {
+						ae->idx+=4;
+					}
 				} else {
 					ae->idx+=3;
 				}
@@ -6737,6 +7583,10 @@ void __HEXBIN(struct s_assenv *ae) {
 					MaxError(ae);
 				}
 			}
+			/* negative offset conversion */
+			if (offset<0) {
+				offset=ae->hexbin[hbinidx].datalen+offset;
+			}
 			if (!size) {
 				if (!offset) {
 					size=ae->hexbin[hbinidx].datalen;
@@ -6752,8 +7602,20 @@ void __HEXBIN(struct s_assenv *ae) {
 					rasm_printf(ae,"[%s] Error line %d - INCBIN size+offset is greater than filesize\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 					MaxError(ae);
 				} else {
-					for (idx=offset;idx<size+offset;idx++) {
-						___output(ae,ae->hexbin[hbinidx].data[idx]);
+					if (overwritecheck) {
+						for (idx=offset;idx<size+offset;idx++) {
+							___output(ae,ae->hexbin[hbinidx].data[idx]);
+						}
+					} else {
+						___org_close(ae);
+						___org_new(ae,0);
+						for (idx=offset;idx<size+offset;idx++) {
+							___output(ae,ae->hexbin[hbinidx].data[idx]);
+						}
+						/* hack to disable overwrite check */
+						ae->orgzone[ae->io-1].nocode=2;
+						___org_close(ae);
+						___org_new(ae,0);
 					}
 				}
 			}
@@ -6767,24 +7629,54 @@ void __HEXBIN(struct s_assenv *ae) {
 	}
 }
 
+/*
+save "nom",start,end -> save binary
+save "nom",start,end,AMSDOS -> save binary with Amsdos header
+save "nom",start,end,DSK,"dskname" -> save binary on DSK data format
+save "nom",start,end,DSK,"dskname",B -> select face
+save "nom",start,end,DSK,B -> current DSK, choose face
+save "nom",start,end,DSK -> current DSK, current face
+*/
 void __SAVE(struct s_assenv *ae) {
 	struct s_save cursave={0};
 	unsigned int offset=0,size=0;
 	int ko=1;
 	
 	if (!ae->wl[ae->idx].t) {
-		/* nom de fichier entre quotes */
+		/* nom de fichier entre quotes ou bien mot clef DSK */
 		if (!StringIsQuote(ae->wl[ae->idx+1].w)) {
 			rasm_printf(ae,"[%s] Error line %d - SAVE invalid filename quote\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 			MaxError(ae);
 			ko=0;
 		} else {
 			if (!ae->wl[ae->idx+1].t) {
-				if (!ae->wl[ae->idx+2].t && ae->wl[ae->idx+3].t==1) {
+				if (!ae->wl[ae->idx+2].t && ae->wl[ae->idx+3].t!=2) {
 					cursave.ibank=ae->activebank;
 					cursave.ioffset=ae->idx+2;
 					cursave.isize=ae->idx+3;
 					cursave.iw=ae->idx+1;
+					if (!ae->wl[ae->idx+3].t) {
+						if (strcmp(ae->wl[ae->idx+4].w,"AMSDOS")==0) {
+							cursave.amsdos=1;
+						} else if (strcmp(ae->wl[ae->idx+4].w,"DSK")==0) {
+							cursave.dsk=1;
+							if (!ae->wl[ae->idx+4].t) {
+								cursave.iwdskname=ae->idx+5;
+							} else {
+								if (ae->nbsave && ae->save[ae->nbsave-1].iwdskname!=-1) {
+									cursave.iwdskname=ae->save[ae->nbsave-1].iwdskname; /* previous selection */
+								} else {
+									cursave.iwdskname=-1;
+									rasm_printf(ae,"[%s] Error line %d - cannot autoselect DSK as there was not a previous selection\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+									MaxError(ae);
+								}
+							}
+						} else {
+							rasm_printf(ae,"[%s] Error line %d - SAVE 4th parameter must be empty or AMSDOS or DSK\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+							MaxError(ae);
+							ko=0;
+						}
+					}
 					ObjectArrayAddDynamicValueConcat((void**)&ae->save,&ae->nbsave,&ae->maxsave,&cursave,sizeof(cursave));
 					ko=0;
 				}
@@ -6792,7 +7684,7 @@ void __SAVE(struct s_assenv *ae) {
 		}
 	}
 	if (ko) {
-		rasm_printf(ae,"[%s] Error line %d - Use SAVE 'filename',offset,size\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		rasm_printf(ae,"[%s] Error line %d - Use SAVE 'filename',offset,size[,AMSDOS|DSK[,A|B|'dskname'[,A|B]]]\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
 	}
 
@@ -6910,6 +7802,8 @@ struct s_asm_keyword instruction[]={
 {"IF",0,__IF},
 {"ENDIF",0,__ENDIF},
 {"IFNOT",0,__IFNOT},
+{"IFDEF",0,__IFDEF},
+{"IFNDEF",0,__IFNDEF},
 {"CASE",0,__CASE},
 {"BREAK",0,__BREAK},
 {"DEFAULT",0,__DEFAULT},
@@ -6930,7 +7824,9 @@ struct s_asm_keyword instruction[]={
 {"LIST",0,__LIST},
 {"STOP",0,__STOP},
 {"PRINT",0,__PRINT},
+{"BREAKPOINT",0,__BREAKPOINT},
 {"BANK",0,__BANK},
+{"BANKSET",0,__BANKSET},
 {"NAMEBANK",0,__NameBANK},
 {"LIMIT",0,__LIMIT},
 {"LZEXO",0,__LZEXO},
@@ -6952,7 +7848,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	#undef FUNC
 	#define FUNC "Assemble"
 
-	char AmsdosHeader[128]={0};
+	char *AmsdosHeader;
 	struct s_expression curexp={0};
 	struct s_wordlist *wordlist;
 	struct s_expr_dico curdico={0};
@@ -6999,24 +7895,27 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	ae->AutomateExpressionDecision['~']='~';
 	
 
-	/* variables par dÃ©faut */
+	/* default var */
 	ExpressionSetDicoVar(ae,"PI",3.1415926545);
-	ExpressionSetDicoVar(ae,"ASIC_PRI",0x6800);
-	ExpressionSetDicoVar(ae,"ASIC_SPLIT",0x6801);
-	ExpressionSetDicoVar(ae,"ASIC_SSA",0x6802);
-	ExpressionSetDicoVar(ae,"ASIC_SSR",0x6804);
+	ExpressionSetDicoVar(ae,"ASSEMBLER_RASM",1);
 	
-	/* pour simplifier les tests... */
+	/* add a fictive expression to simplify test when parsing expressions */
 	ObjectArrayAddDynamicValueConcat((void **)&ae->expression,&ae->ie,&ae->me,&curexp,sizeof(curexp));
 	
-	/* calcul des CRC pour les mots clefs et directives */
+	/* compute CRC for keywords and directives */
 	for (icrc=0;instruction[icrc].mnemo[0];icrc++) instruction[icrc].crc=GetCRC(instruction[icrc].mnemo);
 	for (icrc=0;math_keyword[icrc].mnemo[0];icrc++) math_keyword[icrc].crc=GetCRC(math_keyword[icrc].mnemo);
 
 	/* Execution des mots clefs */
+	/**********************************************************
+	       A S S E M B L I N G    M A I N    L O O P
+	**********************************************************/
 	ae->idx=1;
 	while (wordlist[ae->idx].t!=2) {
 		curcrc=GetCRC(wordlist[ae->idx].w);
+		/*********************
+		 d e b u g   i n f o
+		*********************/
 		if (ae->verbose&4) {
 			int iiii=0;
 			rasm_printf(ae,"%d [%s] L%d [%s]",ae->idx,ae->filename[wordlist[ae->idx].ifile],wordlist[ae->idx].l,wordlist[ae->idx].w);
@@ -7028,16 +7927,18 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 			
 			rasm_printf(ae,"\n");
 		}
-		/* assemblage conditionnel */
+		/********************************************************************
+		  c o n d i t i o n n a l    a s s e m b l y    m a n a g e m e n t
+		********************************************************************/
 		if (ae->ii || ae->isw) {
-			/* inhibition des if/endif */
+			/* inhibition of if/endif */
 			for (inhibe=curii=0;curii<ae->ii;curii++) {
 				if (!ae->ifthen[curii] || ae->ifthen[curii]==-1) {
 					inhibe=1;
 					break;
 				}
 			}
-			/* inhibition des switch/case */
+			/* inhibition of switch/case */
 			if (!inhibe) {
 				for (curii=0;curii<ae->isw;curii++) {
 					if (!ae->switchcase[curii].execute) {
@@ -7046,8 +7947,10 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 				}
 			}
-			/* en inhibition on cherche uniquement un prochain IF/IFNOT/ELSE/ELSEIF/ENDIF ou SWITCH/CASE/DEFAULT/ENDSWITCH */
+			/* when inhibited we are looking only for a IF/IFDEF/IFNOT/IFNDEF/ELSE/ELSEIF/ENDIF or SWITCH/CASE/DEFAULT/ENDSWITCH */
 			if (inhibe) {
+				/* this section does NOT need to be agressively optimized !!! */
+				
 				/* sorted by probability */
 				if (curcrc==CRC_ELSEIF && strcmp(wordlist[ae->idx].w,"ELSEIF")==0) {
 					__ELSEIF(ae);
@@ -7059,6 +7962,8 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					__IF(ae);
 				} else if (curcrc==CRC_SWITCH && strcmp(wordlist[ae->idx].w,"SWITCH")==0) {
 					__SWITCH(ae);
+				} else if (curcrc==CRC_IFDEF && strcmp(wordlist[ae->idx].w,"IFDEF")==0) {
+					__IFDEF(ae);
 				} else if (curcrc==CRC_IFNOT && strcmp(wordlist[ae->idx].w,"IFNOT")==0) {
 					__IFNOT(ae);
 				} else if (curcrc==CRC_ELSE && strcmp(wordlist[ae->idx].w,"ELSE")==0) {
@@ -7067,6 +7972,8 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					__ENDIF(ae);
 				} else if (curcrc==CRC_ENDSWITCH && strcmp(wordlist[ae->idx].w,"ENDSWITCH")==0) {
 					__ENDSWITCH(ae);
+				} else if (curcrc==CRC_IFNDEF && strcmp(wordlist[ae->idx].w,"IFNDEF")==0) {
+					__IFNDEF(ae);
 				} else if (curcrc==CRC_DEFAULT && strcmp(wordlist[ae->idx].w,"DEFAULT")==0) {
 					__DEFAULT(ae);
 				}
@@ -7076,15 +7983,17 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 			}
 		}
 		if (ae->imacropos) {
-			/* on se trouve encore dans la macro? */
+			/* are we still in a macro? */
 			if (ae->idx>=ae->macropos[0].end) {
-				/* on est sorti de tous les blocs de repetition? */
+				/* are we out of all repetition blocks? */
 				if (!ae->ir && !ae->iw) {
 					ae->imacropos=0;
 				}
 			}
 		}
-
+		/*****************************************
+		  e x e c u t e    i n s t r u c t i o n
+		*****************************************/
 		executed=0;
 		if ((ifast=ae->fastmatch[(int)wordlist[ae->idx].w[0]])!=-1) {
 			while (instruction[ifast].mnemo[0]==wordlist[ae->idx].w[0]) {
@@ -7096,18 +8005,24 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				ifast++;
 			}
 		}
+		/*****************************************
+		       e x e c u t e    m a c r o
+		*****************************************/
 		if (!executed) {
-			/* est-ce une macro? */
+			/* is it a macro? */
 			if ((ifast=SearchMacro(ae,curcrc,wordlist[ae->idx].w))>=0) {
 				wordlist=__MACRO_EXECUTE(ae,ifast);
 				continue;
 			}
 		}
+		/*********************************************************************
+		  e x e c u t e    e x p r e s s i o n   o r    p u s h    l a b e l
+		*********************************************************************/
 		if (!executed) {
-			/* ni instruction ni directive, un seul mot clef, c'est un label ou une affectation! */
+			/* no instruction executed, this is a label or an assignement */
 			if (wordlist[ae->idx].e) {
 				ExpressionFastTranslate(ae,&wordlist[ae->idx].w,0);
-				RoundComputeExpression(ae,wordlist[ae->idx].w,ae->codeadr,0,0); // quel intérêt du Round?
+				ComputeExpression(ae,wordlist[ae->idx].w,ae->codeadr,0,0);
 			} else {
 				PushLabel(ae);
 			}
@@ -7120,14 +8035,15 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 		rasm_printf(ae,"%d [%s] L%d [%s] fin de la liste de mots\n",ae->idx,ae->filename[wordlist[ae->idx].ifile],wordlist[ae->idx].l,wordlist[ae->idx].w);
 	}
 
-	/* fin de l'assemblage, on clot le ORG en cours */
+	/* end of assembly, close the last ORG zone */
 	if (ae->io) {
 		ae->orgzone[ae->io-1].memend=ae->outputadr;
 	}
 	OverWriteCheck(ae);
-	/* fin de l'assemblage, on clot le crunch en cours (si besoin) */
+	/* end of assembly, close crunched zone (if any) */
 	__internal_UpdateLZBlockIfAny(ae);
 	
+	/* end of assembly, check for opened repeat and opened while loop */
 	for (i=0;i<ae->ir;i++) {
 		rasm_printf(ae,"[%s] L%d REPEAT was not closed\n",ae->filename[wordlist[ae->repeat[i].start].ifile],wordlist[ae->repeat[i].start].l);
 		MaxError(ae);
@@ -7138,10 +8054,9 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	}
 
 	
-	/*
-		crunch des sections LZ
-		update des labels anterieurs si dans le meme orgzone
-	*/
+	/***************************************************
+	         c r u n c h   L Z   s e c t i o n s
+	***************************************************/
 	for (i=0;i<ae->ilz;i++) {
 		/* compute labels and expression inside crunched blocks */
 		PopAllExpression(ae,i);
@@ -7149,34 +8064,6 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 		ae->curlz=i;
 		iorgzone=ae->lzsection[i].iorgzone;
 		ibank=ae->lzsection[i].ibank;
-#if 0
-		/*
-			si la section LZ n'est pas la premiere du ORG courant, on doit forcer le calcul
-			de ses expressions (qui ont ete relogees apres le traitement du LZ precedent).
-		*/
-		if (ae->lzsection[i].lz==2) {
-			printf("forcer calcul des expressions du LZ\n");
-			/* @TODO remplacer par un fast index dans le ORG! */
-			for (il=0;il<ae->ie && (ae->expression[il].iorgzone!=iorgzone || ae->expression[il].ibank!=ibank || ae->expression[il].wptr<ae->lzsection[i].memstart || ae->expression[il].wptr>ae->lzsection[i].memend);il++);
-			while (il<ae->ie && ae->expression[il].iorgzone==iorgzone && ae->expression[il].ibank==ibank && ae->expression[il].wptr<=ae->lzsection[i].memend) {
-				printf("expr[%s](%d) set to 1\n",ae->expression[il].reference?ae->expression[il].reference:wordlist[ae->expression[il].iw].w,ae->expression[il].crunch_block);
-				ae->expression[il].crunch_block=1;
-				il++;
-			}
-			/* reloger les labels aussi (idem fast index dans le ORG) */
-			/* on se positionne sur tous les pointeurs de la zone */
-			for (il=0;il<ae->il && (ae->label[il].iorgzone!=iorgzone || ae->label[il].ibank!=ibank);il++);
-			while (il<ae->il && ae->label[il].iorgzone==iorgzone && ae->label[il].ibank==ibank) {
-				/* on devrait shifter des labels deja utilises mais tant pis c'est plus simple a traiter de cette facon */
-				printf("reset label [%s] to 1\n",ae->label[il].iw!=-1?wordlist[ae->label[il].iw].w:ae->label[il].name);
-				ae->label[il].lz=1;
-				il++;
-			}
-			
-			/* on peut calculer les expr a nouveau @TODO faire un acces rapide */
-			PopAllExpression(ae,1);
-		}
-#endif
 		input_data=&ae->mem[ae->lzsection[i].ibank][ae->lzsection[i].memstart];
 		input_size=ae->lzsection[i].memend-ae->lzsection[i].memstart;
 
@@ -7207,7 +8094,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				rasm_printf(ae,"Internal error - unknown crunch method %d\n",ae->lzsection[i].lzversion);
 				exit(-12);
 		}
-//rasm_printf(ae,"lzsection[%d] type=%d start=%04X end=%04X crunched size=%d\n",i,ae->lzsection[i].lzversion,ae->lzsection[i].memstart,ae->lzsection[i].memend,lzlen);
+		//rasm_printf(ae,"lzsection[%d] type=%d start=%04X end=%04X crunched size=%d\n",i,ae->lzsection[i].lzversion,ae->lzsection[i].memstart,ae->lzsection[i].memend,lzlen);
 
 		lzshift=lzlen-(ae->lzsection[i].memend-ae->lzsection[i].memstart);
 		if (lzshift>0) {
@@ -7220,27 +8107,27 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 		}
 		memcpy(ae->mem[ae->lzsection[i].ibank]+ae->lzsection[i].memstart,lzdata,lzlen);
 		MemFree(lzdata);
-		/* reloger les pointeurs */
-		
-		/* on se positionne sur les pointeurs situes apres la crunched zone (dans le meme org) */
+		/*******************************************************************
+		  l a b e l    a n d    e x p r e s s i o n    r e l o c a t i o n
+		*******************************************************************/
+		/* relocate labels in the same ORG zone AND after the current crunched section */
 		il=ae->lzsection[i].ilabel;
 		while (il<ae->il && ae->label[il].iorgzone==iorgzone && ae->label[il].ibank==ibank) {
 			curlabel=SearchLabel(ae,ae->label[il].iw!=-1?wordlist[ae->label[il].iw].w:ae->label[il].name,ae->label[il].crc);
 			/* CANNOT be NULL */
 			curlabel->ptr+=lzshift;
-//printf("label [%s] shifte de %d valeur #%04X -> #%04X\n",curlabel->iw!=-1?wordlist[curlabel->iw].w:curlabel->name,lzshift,curlabel->ptr-lzshift,curlabel->ptr);
+			//printf("label [%s] shifte de %d valeur #%04X -> #%04X\n",curlabel->iw!=-1?wordlist[curlabel->iw].w:curlabel->name,lzshift,curlabel->ptr-lzshift,curlabel->ptr);
 			il++;
 		}
-		/* reloger les expressions situess apres la crunched zone (dans le meme org) */
+		/* relocate expressions in the same ORG zone AND after the current crunched section */
 		il=ae->lzsection[i].iexpr;
 		while (il<ae->ie && ae->expression[il].iorgzone==iorgzone && ae->expression[il].ibank==ibank) {
 			ae->expression[il].wptr+=lzshift;
 			ae->expression[il].ptr+=lzshift;
-//printf("expression [%s] shiftee ptr=#%04X wptr=#%04X\n",ae->expression[il].reference?ae->expression[il].reference:wordlist[ae->expression[il].iw].w,ae->expression[il].ptr,ae->expression[il].wptr);
+			//printf("expression [%s] shiftee ptr=#%04X wptr=#%04X\n", ae->expression[il].reference?ae->expression[il].reference:wordlist[ae->expression[il].iw].w, ae->expression[il].ptr, ae->expression[il].wptr);
 			il++;
 		}
-		/* reloger les autres sections LZ!!! */
-//rasm_printf(ae,"lzsection[%d] O%d B%d\n",i,ae->lzsection[i].iorgzone,ae->lzsection[i].ibank);
+		/* relocate crunched sections in the same ORG zone AND after the current crunched section */
 		il=i+1;
 		while (il<ae->ilz && ae->lzsection[il].iorgzone==iorgzone && ae->lzsection[il].ibank==ibank) {
 			//rasm_printf(ae,"reloger lzsection[%d] O%d B%d\n",il,ae->lzsection[il].iorgzone,ae->lzsection[il].ibank);
@@ -7248,8 +8135,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 			ae->lzsection[il].memend+=lzshift;
 			il++;
 		}
-		
-		/* reloge le ORG courant au crunch */
+		/* relocate current ORG zone */
 		ae->orgzone[iorgzone].memend+=lzshift;
 	}
 	if (ae->ilz) {
@@ -7260,16 +8146,24 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	PopAllExpression(ae,-1);
 	
 
-/******* ecriture des donnees assemblees *********/
+/***************************************************************************************************************************************************************************************
+****************************************************************************************************************************************************************************************
+      W R I T E      O U T P U T      F I L E S
+****************************************************************************************************************************************************************************************
+***************************************************************************************************************************************************************************************/
+	TMP_filename=MemMalloc(PATH_MAX);
 
-	TMP_filename=MemMalloc(strlen(ae->outputfilename)+5);
-
-	if (!ae->nberr) {
+	if (!ae->nberr && !ae->checkmode) {
 		
 		/* enregistrement des fichiers programmes par la commande SAVE */
 		PopAllSave(ae);
-		
-		if (ae->nbsave==0 || ae->forcecpr) {
+	
+		if (ae->nbsave==0 || ae->forcecpr || ae->forcesnapshot) {
+			/*********************************************
+			**********************************************
+						  C A R T R I D G E
+			**********************************************
+			*********************************************/
 			if (ae->forcecpr) {
 				char ChunkName[5];
 				int ChunkSize;
@@ -7353,6 +8247,11 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				}
 				FileWriteBinaryClose(TMP_filename);
 				rasm_printf(ae,"Total %d bank%s (%dK)\n",maxrom+1,maxrom+1>1?"s":"",(maxrom+1)*16);
+			/*********************************************
+			**********************************************
+						  S N A P S H O T  
+			**********************************************
+			*********************************************/
 			} else if (ae->forcesnapshot) {
 				unsigned char packed[65536]={0};
 				unsigned char *rlebank=NULL;
@@ -7360,13 +8259,6 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				int ChunkSize;
 				int do_it=1;
 				int bankset;
-
-				ae->snapshot.registers.IM=1;
-				for (i=0;i<17;i++) ae->snapshot.gatearray.palette[i]=0x14;
-				ae->snapshot.gatearray.multiconfiguration=0x8D; // lower/upper ROM off
-				ae->snapshot.CPCType=2; // 6128
-				ae->snapshot.vsyncdelay=2;
-				strcpy(ae->snapshot.unused6+3+0x20+8,"RASM v0.63");
 
 				
 				if (ae->snapshot_name) {
@@ -7379,7 +8271,6 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				rasm_printf(ae,"Write snapshot file %s\n",TMP_filename);
 				for (i=maxrom=0;i<ae->io;i++) {
 					if (ae->orgzone[i].ibank<36 && ae->orgzone[i].ibank>maxrom && ae->orgzone[i].memstart!=ae->orgzone[i].memend) {
-						printf("ibank=%02d s:%04X e:%04X\n",ae->orgzone[i].ibank,ae->orgzone[i].memstart,ae->orgzone[i].memend);
 						maxrom=ae->orgzone[i].ibank;
 					}
 				}
@@ -7389,25 +8280,12 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				FileWriteBinary(TMP_filename,(char *)&ae->snapshot,0x100);
 				/* write all memory crunched */
 				for (i=0;i<=maxrom;i+=4) {
-					offset=65536;
-					endoffset=0;
-					for (k=0;k<4;k++) {
-						for (j=0;j<ae->io;j++) {
-							/* bank data may start anywhere (typically #0000 or #C000) */
-							if (ae->orgzone[j].ibank==i+k && ae->orgzone[j].memstart!=ae->orgzone[j].memend) {
-								if (ae->orgzone[j].memstart<offset) offset=ae->orgzone[j].memstart;
-								if (ae->orgzone[j].memend>endoffset) endoffset=ae->orgzone[j].memend;
-							}
-						}
-					}
-					/* rien dans ces banks, inutile de les écrire sur disque */
-					if (endoffset<offset) {
-						continue;
-					}
-
 					bankset=i/4;
 					if (ae->bankset[bankset]) {
 						memcpy(packed,ae->mem[i],65536);
+						if (ae->verbose & 8) {
+							rasm_printf(ae,"WriteSNA bank %2d,%d,%d,%d packed\n",i,i+1,i+2,i+3);
+						}
 					} else {
 						memset(packed,0,65536);
 						for (k=0;k<4;k++) {
@@ -7433,24 +8311,34 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 							} else {
 								memcpy(packed+k*16384,(char*)ae->mem[i]+offset,16384);
 							}
+							
+							if (ae->verbose & 8) {
+								if (endoffset>offset) {
+									int lm=0;
+									if (ae->iwnamebank[i]>0) {
+										lm=strlen(ae->wl[ae->iwnamebank[i]].w)-2;
+									}
+									rasm_printf(ae,"WriteSNA bank %2d of %5d byte%s start at #%04X",i+k,endoffset-offset,endoffset-offset>1?"s":" ",offset);
+									if (endoffset-offset>16384) {
+										rasm_printf(ae,"\nRAM block is too big!!!\n");
+										FileWriteBinaryClose(TMP_filename);
+										FileRemoveIfExists(TMP_filename);
+										exit(ABORT_ERROR);
+									}
+									if (lm) {
+										rasm_printf(ae," (%-*.*s)\n",lm,lm,ae->wl[ae->iwnamebank[i+k]].w+1);
+									} else {
+										rasm_printf(ae,"\n");
+									}
+								} else {
+									rasm_printf(ae,"WriteSNA bank %2d (empty)\n",i+k);
+								}
+							}
+							
 						}
 					}
-					if (ae->verbose & 8) {
-						int lm=0;
-						if (ae->iwnamebank[i]>0) {
-							lm=strlen(ae->wl[ae->iwnamebank[i]].w)-2;
-						}
-						rasm_printf(ae,"WriteSNA extended bank %2d of %5d byte%s start at #%04X",i,endoffset-offset,endoffset-offset>1?"s":" ",offset);
-						if (lm) {
-							rasm_printf(ae," (%-*.*s)\n",lm,lm,ae->wl[ae->iwnamebank[i]].w+1);
-						} else {
-							rasm_printf(ae,"\n");
-						}
-					}
-					
 					/* compression par défaut avec snapshot v3 */
 					rlebank=EncodeSnapshotRLE(packed,&ChunkSize);
-					
 					sprintf(ChunkName,"MEM%d",bankset);
 					FileWriteBinary(TMP_filename,ChunkName,4);
 					if (rlebank!=NULL) {
@@ -7463,6 +8351,54 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 				}
 
+				/* export breakpoint */
+				if (ae->export_brk) {
+					/* BRKS chunk for Winape emulator (unofficial) 
+					
+					2 bytes - adress
+					1 byte  - 0=base 64K / 1=extended
+					2 bytes - condition (zeroed)
+					*/
+					struct s_breakpoint breakpoint={0};
+					unsigned char *brkschunk=NULL;
+					unsigned int idx=8;
+					
+					/* add labels and local labels to breakpoint pool (if any) */
+					for (i=0;i<ae->il;i++) {
+						if (!ae->label[i].name) {
+							if (strncmp(ae->wl[ae->label[i].iw].w,"BRK",3)==0) {
+								breakpoint.address=ae->label[i].ptr;
+								if (ae->label[i].ibank>3) breakpoint.bank=1; else breakpoint.bank=0;
+								ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));
+							}
+						} else {
+							if (strncmp(ae->label[i].name,"@BRK",4)==0) {
+								breakpoint.address=ae->label[i].ptr;
+								if (ae->label[i].ibank>3) breakpoint.bank=1; else breakpoint.bank=0;
+								ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));								
+							}
+						}
+					}
+						
+					brkschunk=MemMalloc(ae->ibreakpoint*5+8);
+					strcpy(brkschunk,"BRKS");
+					
+					for (i=0;i<ae->ibreakpoint;i++) {
+						brkschunk[idx++]=ae->breakpoint[i].address&0xFF;
+						brkschunk[idx++]=(ae->breakpoint[i].address&0xFF00)/256;
+						brkschunk[idx++]=ae->breakpoint[i].bank;
+						brkschunk[idx++]=0;
+						brkschunk[idx++]=0;
+					}
+
+					idx-=8;
+					brkschunk[4]=idx&0xFF;
+					brkschunk[5]=(idx>>8)&0xFF;
+					brkschunk[6]=(idx>>16)&0xFF;
+					brkschunk[7]=(idx>>24)&0xFF;
+					FileWriteBinary(TMP_filename,(char*)brkschunk,idx+8); // 8 bytes for the chunk header
+					MemFree(brkschunk);
+				}
 				/* export optionnel des symboles */
 				if (ae->export_sna) {
 					/* SYMB chunk for ACE emulator
@@ -7506,9 +8442,16 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 						}
 					}
 					if (ae->export_var) {
+						unsigned char *subchunk=NULL;
+						int retidx=0;
 						/* var are part of fast tree search structure */
-						//ExportDicoTree(ae,TMP_filename,"%s #%04X\n");
-						printf("WARNING: snapshot var export @@TODO\n");
+						subchunk=SnapshotDicoTree(ae,&retidx);
+						if (retidx) {
+							symbchunk=MemRealloc(symbchunk,idx+retidx);
+							memcpy(symbchunk+idx,subchunk,retidx);
+							idx+=retidx;
+							SnapshotDicoInsert("FREE",0,&retidx);
+						}
 					}
 					if (ae->export_equ) {
 						symbchunk=MemRealloc(symbchunk,idx+ae->ialias*(1+255+6+2));
@@ -7527,15 +8470,22 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 							symbchunk[idx++]=tmpptr&0xFF;
 						}
 					}
+					idx-=8;
 					symbchunk[4]=idx&0xFF;
 					symbchunk[5]=(idx>>8)&0xFF;
 					symbchunk[6]=(idx>>16)&0xFF;
 					symbchunk[7]=(idx>>24)&0xFF;
-					FileWriteBinary(TMP_filename,(char*)symbchunk,idx);
+					FileWriteBinary(TMP_filename,(char*)symbchunk,idx+8); // 8 bytes for the chunk header
 				}
 
 				FileWriteBinaryClose(TMP_filename);
-				rasm_printf(ae,"Total %d bank%s (%dK)\n",maxrom+1,maxrom+1>1?"s":"",(maxrom+1)*16);
+				maxrom=(maxrom>>2)*4+4;
+				rasm_printf(ae,"Total %d bank%s (%dK)\n",maxrom,maxrom>1?"s":"",(maxrom)*16);
+			/*********************************************
+			**********************************************
+					  B I N A R Y     F I L E
+			**********************************************
+			*********************************************/
 			} else {
 				int lastspaceid=-1;
 				
@@ -7549,7 +8499,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				/* en mode binaire classique on va recherche le dernier espace mémoire dans lequel on a travaillé qui n'est pas en 'nocode' */
 				for (i=0;i<ae->io;i++) {
 					/* uniquement si le ORG a ete suivi d'ecriture */
-					if (ae->orgzone[i].memstart!=ae->orgzone[i].memend && !ae->orgzone[i].nocode) {
+					if (ae->orgzone[i].memstart!=ae->orgzone[i].memend && ae->orgzone[i].nocode!=1) {
 						lastspaceid=ae->orgzone[i].ibank;
 					}
 				}
@@ -7568,39 +8518,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					if (!ae->flux) {
 						rasm_printf(ae,"Write binary file %s (%d byte%s)\n",TMP_filename,maxmem-minmem,maxmem-minmem>1?"s":"");
 						if (ae->amsdos) {
-							int checksum;
-							/***  cpcwiki			
-							Byte 00: User number
-							Byte 01 to 08: filename
-							Byte 09 bis 11: Extension
-							Byte 18: type-byte
-							Byte 21 and 22: loading address
-							Byte 24 and 25: file length
-							Byte 26 and 27: execution address for machine code programs
-							Byte 64 and 65: (file length)
-							Byte 67 and 68: checksum for byte 00 to byte 66
-							To calculate the checksum, just add byte 00 to byte 66 to each other.
-							*/				
-							rasm_printf(ae,"Amsdos header @TOCHECK");
-							memset(AmsdosHeader,0,sizeof(AmsdosHeader));
-							AmsdosHeader[0]=0;
-							strcpy(AmsdosHeader+1,"CODEDATABIN");
-							AmsdosHeader[18]=2; /* 0 basic 1 basic protege 2 binaire */
-							
-							AmsdosHeader[21]=minmem&0xFF;
-							AmsdosHeader[22]=minmem>>8;
-							AmsdosHeader[24]=(maxmem-minmem)&0xFF;
-							AmsdosHeader[25]=(maxmem-minmem)>>8;
-							AmsdosHeader[26]=minmem&0xFF;
-							AmsdosHeader[27]=minmem>>8;
-							AmsdosHeader[64]=(maxmem-minmem)&0xFF;
-							AmsdosHeader[65]=(maxmem-minmem)>>8;
-							
-							for (i=checksum=0;i<=66;i++) {
-								checksum+=AmsdosHeader[i];
-							}
-							AmsdosHeader[67]=checksum&0xFF;
-							AmsdosHeader[68]=checksum>>8;
+							AmsdosHeader=MakeAMSDOSHeader(minmem,maxmem,TMP_filename);
 							FileWriteBinary(TMP_filename,AmsdosHeader,128);
 						}
 						if (maxmem-minmem>0) {
@@ -7619,94 +8537,98 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				}
 			}
 		}
-		/* export symboles */
-		if (ae->symbol_name) {
-			sprintf(TMP_filename,"%s",ae->symbol_name);
-		} else {
-			sprintf(TMP_filename,"%s.sym",ae->outputfilename);
-		}		
-		FileRemoveIfExists(TMP_filename);
-		if (ae->verbose & 7 && ae->export_sym && !ae->export_sna) {
-			rasm_printf(ae,"Export symbols in [%s]\n",TMP_filename);
-		}
-		switch (ae->export_sym) {
-			case 3:
-				/* winape */
-				for (i=0;i<ae->il;i++) {
-					if (!ae->label[i].name) {
-						sprintf(symbol_line,"%s #%04X\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr);
-						FileWriteLine(TMP_filename,symbol_line);
-					} else {
-						if (ae->export_local) {
-							sprintf(symbol_line,"%s #%04X\n",ae->label[i].name,ae->label[i].ptr);
+		/****************************
+		*****************************
+		  S Y M B O L   E X P O R T
+		*****************************
+		****************************/
+		if (ae->export_sym && !ae->export_sna) {
+			if (ae->symbol_name) {
+				sprintf(TMP_filename,"%s",ae->symbol_name);
+			} else {
+				sprintf(TMP_filename,"%s.sym",ae->outputfilename);
+			}		
+			FileRemoveIfExists(TMP_filename);
+			rasm_printf(ae,"Write symbol file %s\n",TMP_filename);
+			switch (ae->export_sym) {
+				case 3:
+					/* winape */
+					for (i=0;i<ae->il;i++) {
+						if (!ae->label[i].name) {
+							sprintf(symbol_line,"%s #%04X\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr);
+							FileWriteLine(TMP_filename,symbol_line);
+						} else {
+							if (ae->export_local) {
+								sprintf(symbol_line,"%s #%04X\n",ae->label[i].name,ae->label[i].ptr);
+								FileWriteLine(TMP_filename,symbol_line);
+							}
+						}
+					}
+					if (ae->export_var) {
+						/* var are part of fast tree search structure */
+						ExportDicoTree(ae,TMP_filename,"%s #%04X\n");
+					}
+					if (ae->export_equ) {
+						for (i=0;i<ae->ialias;i++) {
+							sprintf(symbol_line,"%s #%04X\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
 							FileWriteLine(TMP_filename,symbol_line);
 						}
 					}
-				}
-				if (ae->export_var) {
-					/* var are part of fast tree search structure */
-					ExportDicoTree(ae,TMP_filename,"%s #%04X\n");
-				}
-				if (ae->export_equ) {
-					for (i=0;i<ae->ialias;i++) {
-						sprintf(symbol_line,"%s #%04X\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
-						FileWriteLine(TMP_filename,symbol_line);
+					FileWriteLineClose(TMP_filename);
+					break;
+				case 2:
+					/* pasmo */
+					for (i=0;i<ae->il;i++) {
+						if (!ae->label[i].name) {
+							sprintf(symbol_line,"%s EQU 0%04XH\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr);
+							FileWriteLine(TMP_filename,symbol_line);
+						} else {
+							if (ae->export_local) {
+								sprintf(symbol_line,"%s EQU 0%04XH\n",ae->label[i].name,ae->label[i].ptr);
+								FileWriteLine(TMP_filename,symbol_line);
+							}
+						}
 					}
-				}
-				FileWriteLineClose(TMP_filename);
-				break;
-			case 2:
-				/* pasmo */
-				for (i=0;i<ae->il;i++) {
-					if (!ae->label[i].name) {
-						sprintf(symbol_line,"%s EQU 0%04XH\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr);
-						FileWriteLine(TMP_filename,symbol_line);
-					} else {
-						if (ae->export_local) {
-							sprintf(symbol_line,"%s EQU 0%04XH\n",ae->label[i].name,ae->label[i].ptr);
+					if (ae->export_var) {
+						/* var are part of fast tree search structure */
+						ExportDicoTree(ae,TMP_filename,"%s EQU 0%04XH\n");
+					}
+					if (ae->export_equ) {
+						for (i=0;i<ae->ialias;i++) {
+							sprintf(symbol_line,"%s EQU 0%04XH\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
 							FileWriteLine(TMP_filename,symbol_line);
 						}
 					}
-				}
-				if (ae->export_var) {
-					/* var are part of fast tree search structure */
-					ExportDicoTree(ae,TMP_filename,"%s EQU 0%04XH\n");
-				}
-				if (ae->export_equ) {
-					for (i=0;i<ae->ialias;i++) {
-						sprintf(symbol_line,"%s EQU 0%04XH\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
-						FileWriteLine(TMP_filename,symbol_line);
+					FileWriteLineClose(TMP_filename);
+					break;
+				case 1:
+					/* Rasm */
+					for (i=0;i<ae->il;i++) {
+						if (!ae->label[i].name) {
+							sprintf(symbol_line,"%s #%X B%d\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr,ae->label[i].ibank>31?0:ae->label[i].ibank);
+							FileWriteLine(TMP_filename,symbol_line);
+						} else {
+							if (ae->export_local) {
+								sprintf(symbol_line,"%s #%X B%d\n",ae->label[i].name,ae->label[i].ptr,ae->label[i].ibank>31?0:ae->label[i].ibank);
+								FileWriteLine(TMP_filename,symbol_line);
+							}
+						}
 					}
-				}
-				FileWriteLineClose(TMP_filename);
-				break;
-			case 1:
-				/* Rasm */
-				for (i=0;i<ae->il;i++) {
-					if (!ae->label[i].name) {
-						sprintf(symbol_line,"%s #%X B%d\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr,ae->label[i].ibank>31?0:ae->label[i].ibank);
-						FileWriteLine(TMP_filename,symbol_line);
-					} else {
-						if (ae->export_local) {
-							sprintf(symbol_line,"%s #%X B%d\n",ae->label[i].name,ae->label[i].ptr,ae->label[i].ibank>31?0:ae->label[i].ibank);
+					if (ae->export_var) {
+						/* var are part of fast tree search structure */
+						ExportDicoTree(ae,TMP_filename,"%s #%X B0\n");
+					}
+					if (ae->export_equ) {
+						for (i=0;i<ae->ialias;i++) {
+							sprintf(symbol_line,"%s #%X B0\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
 							FileWriteLine(TMP_filename,symbol_line);
 						}
 					}
-				}
-				if (ae->export_var) {
-					/* var are part of fast tree search structure */
-					ExportDicoTree(ae,TMP_filename,"%s #%X B0\n");
-				}
-				if (ae->export_equ) {
-					for (i=0;i<ae->ialias;i++) {
-						sprintf(symbol_line,"%s #%X B0\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
-						FileWriteLine(TMP_filename,symbol_line);
-					}
-				}
-				FileWriteLineClose(TMP_filename);
-				break;
-			case 0:
-			default:break;	
+					FileWriteLineClose(TMP_filename);
+					break;
+				case 0:
+				default:break;	
+			}
 		}
 	} else {
 		rasm_printf(ae,"%d error%s\n",ae->nberr,ae->nberr>1?"s":"");
@@ -7719,52 +8641,6 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				if (ae->orgzone[i].memend>maxmem) maxmem=ae->orgzone[i].memend;
 			}
 		}
-	}
-
-	if (ae->verbose&(4+2) && maxmem-minmem>0) {
-		printf("%04X - ",minmem);
-		i=minmem&0xF;
-		while (i) {
-			printf("   ");
-			i--;
-		}
-
-		/* dump hexa du code assemble, pour tests */
-		il=0;
-		for (i=minmem;i<maxmem;i++) {
-			rasm_printf(ae,"%02X ",ae->mem[32][i]);
-			if (!((i+1)%16)) {
-				rasm_printf(ae," | ");
-				for (j=i-15;j<=i;j++) {
-					if (ae->mem[32][j]>=32 && ae->mem[32][j]<128) {
-						rasm_printf(ae,"%c",ae->mem[32][j]);
-					} else {
-						rasm_printf(ae,".");
-					}
-				}
-				rasm_printf(ae,"\n%04X - ",i+1);
-				il=i+1;
-			}
-		}
-		i--;
-		if (i && ((i+1)%16)) {
-			rasm_printf(ae,"   ");
-			j=i+1;
-			while (((j+1)%16)) {
-				rasm_printf(ae,"   ");
-				j++;
-			}
-			rasm_printf(ae," | ");
-			for (j=il;j<i+1;j++) {
-				if (ae->mem[32][j]>=32 && ae->mem[32][j]<128) {
-					rasm_printf(ae,"%c",ae->mem[32][j]);
-				} else {
-					rasm_printf(ae,".");
-				}
-			}
-			rasm_printf(ae,"\n");
-		}
-		rasm_printf(ae,"\n");
 	}
 
 	if (ae->verbose & 7) {
@@ -7781,13 +8657,15 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 		rasm_printf(ae,"%d virtual space%s\n",ae->nbbank,ae->nbbank>1?"s":"");
 	}
 
-	/* liberation memoire */
+/*******************************************************************************************
+                            M E M O R Y       C L E A N U P 
+*******************************************************************************************/
 	for (i=0;i<ae->nbbank;i++) {
 		MemFree(ae->mem[i]);
 	}
 	MemFree(ae->mem);
 	
-	/* liberation buffer operation */
+	/* expression core buffer free */
 	ComputeExpressionCore(NULL,NULL,0,0);
 	ExpressionFastTranslate(NULL,NULL,0);
 	/* free labels, expression, orgzone, repeat, ... */
@@ -7805,6 +8683,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	for (i=0;i<ae->il;i++) {
 		if (ae->label[i].name && ae->label[i].iw==-1) MemFree(ae->label[i].name);
 	}
+	if (ae->maxbreakpoint) MemFree(ae->breakpoint);
 	if (ae->ml) MemFree(ae->label);
 	if (ae->mr) MemFree(ae->repeat);
 	if (ae->mi) MemFree(ae->ifthen);
@@ -7828,7 +8707,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	}
 	if (ae->mmacro) MemFree(ae->macro);
 
-	for (i=0;i<ae->ialias;i++) {
+	for (i=2;i<ae->ialias;i++) {
 		MemFree(ae->alias[i].alias);
 		MemFree(ae->alias[i].translation);
 	}
@@ -7933,7 +8812,7 @@ int cmpkeyword(const void * a, const void * b)
 	return strcmp(sa->mnemo,sb->mnemo);
 }
 
-struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int datalen, int verbose, char *outputfilename, char *labelfilename)
+struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int datalen, int verbose, char *outputfilename, char **labelfilename)
 {
 	#undef FUNC
 	#define FUNC "PreProcessing"
@@ -8009,8 +8888,26 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 
 	memcpy(ae->snapshot.idmark,"MV - SNA",8);
 	ae->snapshot.version=3;
-	ae->snapshot.CPCType=2;         /* 6128 */
+	ae->snapshot.registers.IM=1;
+	for (i=0;i<17;i++) ae->snapshot.gatearray.palette[i]=0x04;
+	ae->snapshot.gatearray.palette[1]=0x0A;
+	;
+	ae->snapshot.gatearray.multiconfiguration=0x8D; // lower/upper ROM off
+	ae->snapshot.CPCType=2; /* 6128 */
 	ae->snapshot.crtcstate.model=0; /* CRTC 0 */
+	ae->snapshot.vsyncdelay=2;
+	strcpy(ae->snapshot.unused6+3+0x20+8,RASM_VERSION);
+	/* CRTC default registers */
+	ae->snapshot.crtc.registervalue[0]=0x3F;
+	ae->snapshot.crtc.registervalue[1]=40;
+	ae->snapshot.crtc.registervalue[2]=46;
+	ae->snapshot.crtc.registervalue[3]=0x8E;
+	ae->snapshot.crtc.registervalue[4]=38;
+	ae->snapshot.crtc.registervalue[6]=25;
+	ae->snapshot.crtc.registervalue[7]=30;
+	ae->snapshot.crtc.registervalue[9]=7;
+	ae->snapshot.crtc.registervalue[12]=0x30;
+	ae->snapshot.psg.registervalue[7]=0x3F; /* audio mix all channels OFF */
 
 	/*
 		winape		sprintf(symbol_line,"%s #%4X\n",ae->label[i].name,ae->label[i].ptr);
@@ -8019,32 +8916,34 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	*/
 	
 	if (labelfilename) {
-		rasm_printf(ae,"Label import from [%s]\n",labelfilename);
-		labelines=FileReadLines(labelfilename);
-		i=0;
-		while (labelines[i]) {
-			if ((labelsep1=strstr(labelines[i]," EQU 0"))!=NULL) {
-				/* pasmo */
-				*labelsep1=0;
-				curlabel.name=labelines[i];
-				curlabel.iw=-1;
-				curlabel.crc=GetCRC(curlabel.name);
-				curlabel.ptr=strtol(labelsep1+6,NULL,16);
-				ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,&curlabel,sizeof(curlabel));
-			} else if ((labelsep1=strstr(labelines[i]," "))!=NULL) {
-				/* winape / rasm */
-				if (*(labelsep1+1)=='#') {
+		for (i=0;labelfilename[i] && labelfilename[i][0];i++) {
+			rasm_printf(ae,"Label import from [%s]\n",labelfilename[i]);
+			labelines=FileReadLines(labelfilename[i]);
+			i=0;
+			while (labelines[i]) {
+				if ((labelsep1=strstr(labelines[i]," EQU 0"))!=NULL) {
+					/* pasmo */
 					*labelsep1=0;
 					curlabel.name=labelines[i];
 					curlabel.iw=-1;
 					curlabel.crc=GetCRC(curlabel.name);
-					curlabel.ptr=strtol(labelsep1+2,NULL,16);
+					curlabel.ptr=strtol(labelsep1+6,NULL,16);
 					ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,&curlabel,sizeof(curlabel));
+				} else if ((labelsep1=strstr(labelines[i]," "))!=NULL) {
+					/* winape / rasm */
+					if (*(labelsep1+1)=='#') {
+						*labelsep1=0;
+						curlabel.name=labelines[i];
+						curlabel.iw=-1;
+						curlabel.crc=GetCRC(curlabel.name);
+						curlabel.ptr=strtol(labelsep1+2,NULL,16);
+						ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,&curlabel,sizeof(curlabel));
+					}
 				}
+				i++;
 			}
-			i++;
+			MemFree(labelines);
 		}
-		MemFree(labelines);
 	}
 	/* 32 CPR default roms but 36 max snapshot RAM pages + one workspace */
 	for (i=0;i<37;i++) {
@@ -8803,7 +9702,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	return ae;
 }
 
-void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, float rough, int export_local, char *labelfilename, int export_var, int export_equ, char *symbol_name, char *binary_name, char *cartridge_name, char *snapshot_name, int export_sna)
+void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, float rough, int export_local, char **labelfilename, int export_var, int export_equ, char *symbol_name, char *binary_name, char *cartridge_name, char *snapshot_name, int export_sna, int checkmode, int export_brk)
 {
 	#undef FUNC
 	#define FUNC "Rasm"
@@ -8817,11 +9716,13 @@ void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, flo
 	ae->export_var=export_var;
 	ae->export_equ=export_equ;
 	ae->export_sna=export_sna;
+	ae->export_brk=export_brk;
 	ae->rough=rough;
 	ae->symbol_name=symbol_name;
 	ae->binary_name=binary_name;
 	ae->cartridge_name=cartridge_name;
 	ae->snapshot_name=snapshot_name;
+	ae->checkmode=checkmode;
 	if (rough) ae->maxam=0; else ae->maxam=1;
 	/* assemble */
 	Assemble(ae,NULL,NULL);
@@ -9107,45 +10008,38 @@ void Usage()
 	#undef FUNC
 	#define FUNC "Usage"
 	
-	printf("%.*s.exe v0.63 (c) 2017 Edouard BERGE\n",(int)(sizeof(__FILENAME__)-3),__FILENAME__);
+	printf("%s (c) 2017 Edouard BERGE (use -n option to display all licenses)\n",RASM_VERSION);
 	#ifndef NO_3RD_PARTIES
-	printf("LZ4 (c) 2011 by Yann Collet\n");
-	printf("ZX7 (c) 2012 by Einar Saukas\n");
-	printf("Exomizer 2 (c) 2005 by Magnus Lind\n");
+	printf("LZ4 (c) Yann Collet / ZX7 (c) Einar Saukas / Exomizer 2 (c) Magnus Lind\n");
 	#endif
-	printf("(use -n option to display all licenses)\n");
 	printf("\n");
-	printf("syntax: rasm <inputfile> [options]\n");
+	printf("SYNTAX: rasm <inputfile> [options]\n");
 	printf("\n");
-	printf("filename options:\n");
-	printf("-o  <outputfile radix>   choose a common radix for every files (bin,cpr,sym)\n");
+	printf("FILENAMES:\n");
+	printf("-o  <outputfile radix>   choose a common radix for all files\n");
 	printf("-ob <binary filename>    choose a full filename for binary output\n");
 	printf("-oc <cartridge filename> choose a full filename for cartridge output\n");
 	printf("-oi <snapshot filename>  choose a full filename for snapshot output\n");
 	printf("-os <symbol filename>    choose a full filename for symbol output\n");
-	printf("\n");
-	printf("symbol options:\n");
+	printf("-no                      disable all file output\n");
+	printf("SYMBOLS:\n");
 	printf("-s  export symbols %%s #%%X B%%d (label,adr,cprbank)\n");
 	printf("-sp export symbols with Pasmo convention\n");
 	printf("-sw export symbols with Winape convention\n");
 	printf("-ss export symbols in the snapshot (SYMB chunk for ACE)\n");
-	printf("\n");
-	printf("-sl export also local symbol (add to another -s option)\n");
-	printf("-sv export also variables symbol (add to another -s option)\n");
-	printf("-sq export also EQU symbol (add to another -s option)\n");
-	printf("-l <labelfile> import symbol file (winape,pasmo,rasm)\n");
-	printf("\n");
-	printf("compatibility option:\n");
+	printf("-l  <labelfile> import symbol file (winape,pasmo,rasm)\n");
+	printf("SYMBOLS ADDITIONNAL OPTIONS:\n");
+	printf("-sl export also local symbol\n");
+	printf("-sv export also variables symbol\n");
+	printf("-sq export also EQU symbol\n");
+	printf("-sa export all symbols (like -sl -sv -sq option)\n");
+	printf("COMPATIBILITY:\n");
 	printf("-m  maxam style calculations\n");
-	printf("\n");
-	printf("banking option:\n");
+	printf("BANKING:\n");
 	printf("-c  cartridge/snapshot summary\n");
-	printf("\n");
-	printf("developper options:\n");
-	printf("-v  verbose mode\n");
-	printf("-d  pre-processing verbose mode\n");
-	printf("-a  assembly verbose mode\n");
-	printf("-n  display RASM & 3rd parties licenses\n");
+	printf("SNAPSHOT:\n");
+	printf("-sb export breakpoints in snapshot (BRKS chunk for Winape)\n");
+	printf("-ss export symbols in the snapshot (SYMB chunk for ACE)\n");
 	printf("\n");
 	
 	exit(ABORT_ERROR);
@@ -9288,24 +10182,27 @@ printf("\n\n");
 	
 	used to parse command line and configuration file
 */
-int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough, int *export_local, char **labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name, char **snapshot_name, int *export_sna)
+int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough, int *export_local, char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name, char **snapshot_name, int *export_sna, int *checkmode, int *export_brk)
 {
 	#undef FUNC
 	#define FUNC "ParseOptions"
+	
 	int i=0;
 
 	if (strcmp(argv[i],"-autotest")==0) {
 		RasmAutotest();
-	}
-	
-	if (argv[i][0]=='-')
-	{
+	} else if (strcmp(argv[i],"-no")==0) {
+		*checkmode=1;
+	} else if (argv[i][0]=='-')	{
 		switch(argv[i][1])
 		{
 			case 'S':
 			case 's':
 				switch (argv[i][2]) {
 					case 0:*export_sym=1;return 0;
+					case 'b':
+					case 'B':
+						*export_brk=1;return 0;
 					case 'p':
 					case 'P':
 						*export_sym=2;return 0;
@@ -9321,8 +10218,15 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 					case 'q':
 					case 'Q':
 						*export_equ=1;return 0;
+					case 'a':
+					case 'A':
+						*export_local=1;
+						*export_var=1;
+						*export_equ=1;
+						return 0;
 					case 's':
 					case 'S':
+						*export_local=1;
 						*export_sym=1;
 						*export_sna=1;return 0;
 					default:
@@ -9331,8 +10235,8 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 				Usage();
 			case 'L':
 			case 'l':
-				if (i+1<argc && *labelfilename==NULL) {
-					*labelfilename=argv[++i];
+				if (i+1<argc) {
+					FieldArrayAddDynamicValue(labelfilename,argv[++i]);
 					break;
 				}	
 				Usage();
@@ -9416,14 +10320,14 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 	GetParametersFromCommandLine	
 	retrieve parameters from command line and fill pointers to file names
 */
-void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough, int *export_local, char **labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name, char **snapshot_name, int *export_sna)
+void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough, int *export_local, char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name, char **snapshot_name, int *export_sna, int *checkmode, int *export_brk)
 {
 	#undef FUNC
 	#define FUNC "GetParametersFromCommandLine"
 	int i;
 	
 	for (i=1;i<argc;i++)
-		i+=ParseOptions(&argv[i],argc-i,filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,export_var,export_equ,symbol_name,binary_name,cartridge_name,snapshot_name,export_sna);
+		i+=ParseOptions(&argv[i],argc-i,filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,export_var,export_equ,symbol_name,binary_name,cartridge_name,snapshot_name,export_sna,checkmode,export_brk);
 
 	if (!*filename) Usage();
 	if (*export_local && !*export_sym) Usage();
@@ -9442,7 +10346,7 @@ int main(int argc, char **argv)
 	#undef FUNC
 	#define FUNC "main"
 
-	char *labelfilename=NULL;
+	char **labelfilename=NULL;
 	char *filename=NULL;
 	char *outputfilename=NULL;
 	int export_local=0;
@@ -9450,15 +10354,17 @@ int main(int argc, char **argv)
 	int export_equ=0;
 	int export_sym=0;
 	int export_sna=0;
+	int export_brk=0;
 	int verbose=0;
+	int checkmode=0;
 	float rough=0.5;
 	char *symbol_name=NULL;
 	char *binary_name=NULL;
 	char *cartridge_name=NULL;
 	char *snapshot_name=NULL;
 
-	GetParametersFromCommandLine(argc,argv,&filename,&export_sym,&verbose,&outputfilename,&rough,&export_local,&labelfilename,&export_var,&export_equ,&symbol_name,&binary_name,&cartridge_name,&snapshot_name,&export_sna);
-	Rasm(filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,export_var,export_equ,symbol_name,binary_name,cartridge_name,snapshot_name,export_sna);
+	GetParametersFromCommandLine(argc,argv,&filename,&export_sym,&verbose,&outputfilename,&rough,&export_local,&labelfilename,&export_var,&export_equ,&symbol_name,&binary_name,&cartridge_name,&snapshot_name,&export_sna,&checkmode,&export_brk);
+	Rasm(filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,export_var,export_equ,symbol_name,binary_name,cartridge_name,snapshot_name,export_sna,checkmode,export_brk);
 	#ifdef RDD
 	/* private dev lib tools */
 	CloseLibrary();
