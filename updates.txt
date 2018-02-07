@@ -1,0 +1,230 @@
+update v0.68
+- Morphos compatibility code
+- better error messages
+- includes or incbin in a disabled section won't warn anymore if file does not exists
+- breakpoint in snapshot with BRKC chunk for ACE emulator
+- shorter splash text
+- unused var cleanup
+
+update v0.67
+- bugfix buffer overflow with long filenames for export
+- snapshot support unofficial Winape breakpoint chunk
+- new directive BREAKPOINT
+- labels begining by BRK or @BRK are exported as breakpoint in snapshots
+
+update v0.66
+- new conditionnal directives IFDEF and IFNDEF
+
+update v0.65
+- snapshot is initialised with standard CRTC values, all audio channels OFF, all inks to deep blue except ink 1 to bright yellow
+- new directives SETCRTC and SETCPC to select the CRTC and CPC model with snapshots
+- new tag {PAGE} before a label to get the gate array banking value for the bank of a label (ex: #C4 for a label in bank 4)
+- new tag {PAGESET} before a label to get the gate array banking value for the bankset of a label (ex: #C2 for a label in bankset 1 or bank 4,5,6,7)
+- new variable ASSEMBLER_RASM (set to 1) in order to have conditionnal code
+- SAVE may be used to save file in a (new) DSK. I have to work on a update mode
+- "checkmode" option to assemble without writing file(s)
+- moar comprehensive error message when using illegal register combination
+- moar compact splash screen- documentation updated
+
+update v0.64
+- bugfix SYMB chunk size
+- added optionnal var export in snapshot SYMB chunk
+- improve bankset switch control (do not mix bank & bankset of the same pages)
+- INCBIN handle negative offset to seek relative to the end of file
+- INCBIN special option to disable overwrite control
+
+update v0.63
+- snapshot generation (with SYMB chunk support for ACE)
+- new directive BANKSET to work with 4 consecutives pages (only in snapshot mode)
+- MEND alias for ENDM (and vice versa)
+- Added '0x' prefix for hexadecimal values
+- Cartridge generation is supposed to work with Rasm on big-endian CPU (like PowerPC)
+- INCBIN directive support negative value for "size to read" in order to read a size relative to fullsize
+- BANK directive may be used without parameter to open a new memory space
+- bugfix UNTIL condition test
+
+updated v0.61
+- bugfix var memory leak with data flow
+- bugfix preprocessing with data flow not using string endchar
+- bugfix var export
+- new directive ASSERT
+
+update v0.58
+- fixed INC SP encoding (was DEC SP opcode)
+
+updated v0.57
+- more flexible preprocessor with macro parameters
+- new label prefix tag {BANK} to get the bank where is located a label
+
+updated v0.56
+- bugfix contiguous ORG check
+- bugfix when a macro is opened for declaration and never closed
+- added while/wend check in pre-processing
+- now you can call a macro with a local value using prefix tag {eval}
+
+updated v0.55
+- bugfix local label internal building
+- new directive INCEXO to include and crunch a file with Exomizer 2 (it's not faster than the original cruncher...)
+- new directive LZEXO to open a code section that will be crunched after assembly
+- licenses of third parties softwares are included in the windows executable and their respective source files
+
+update v0.53
+- bugfix CHARSET <start>,<end>,<index>
+- bugfix duplicate name check for alias
+- new directives INCLZ4, INCZX7 to include and crunch a file with LZ4 or LZX7
+- new directives LZX7, LZ4 to open a code section that will be crunched after assembly
+- literal values syntax check
+
+updated v052
+- bugfix ADD (IY+n), SBC (IY+n) ADC (IY+n) CP (iy+n) were encoded like IX version
+- label duplicate name check
+- tree search for variables speed up +20%
+
+update v0.51
+- bugfix ORG analysis for cartridge generation
+- bugfix LIMIT
+- bugfix with local labels not found in imbricated macros
+
+update v0.50
+- bugfix ORG <adress>,$
+- you may use unix relative paths using Windows so there is nothing to change when switching between both OS
+
+update 2017.04.03 - v0.49
+- bugfix multiple LZ48/LZ49 block in the same ORG zone
+
+updated first post with v0.48
+- bugfix of label calculations when placed after a LZ48/LZ49 block (there is a bug left with more than one LZ section in the same ORG)
+- directives SWITCH/CASE/DEFAULT/ENDSWITCH added
+- PRINT enhancement
+
+update v0.46 RELEASE CANDIDATE
+- bugfix force binary mode when writing files with Windows to avoid extra-bytes
+- bugfix with identical local labels when many repeat/while/macro are imbricated
+- bugfix when macro parameters are bigger than parameter definitions (led to abnormal end)
+- bugfix ADD,SUB,ADC,SBC with IX adressing
+- bugfix with a few error messages that did not trigger an error
+- bugfix truncate instead of rounding in MAXAM compatibility mode
+- bugfix translate $ current adress once for all with EQU
+- bugfix intempestive error message when writing symbol file
+- EQU aliases may be declared after use (even it's NOT a recommended practice)
+- Allow repeat 0 (zero) to disable a block. The block must be correct as there will be a partial decoding for loops
+- Allow RES,SET,BIT,LIMIT first parameter to be a variable/EQU
+- Added optionnal EQU and variable export
+- Added FLOOR function for calculations
+- Added STR winape directive
+- Added LIST keyword to ignored winape directives
+- Added check for REPEAT/WHILE opened but not closed
+- Added automatic windows compiler detection for visual studio & Watcom C
+- Improved a lot MAXAM compatibility (when using appropriate option)
+- bugfix calculations when there is no operator inside a parenthesis block
+
+update v0.42
+- calculation chain reviewed
+- allow old style label declaration with a starting dot
+- allow useless A,register form with ADC,ADD,SBC,SUB
+- extended syntax for 8bits index registers
+
+update v0.40
+- huge bugfix session (local labels, macro, label tree, alias, ...)
+- documentation FR/EN!
+
+update v0.37
+- Macro support with curly brackets
+- EQU is now managed as an alias
+- Added a PROTECT function to prevent overwrite
+- several bugfixes (memory issue, macro mixed with repeat, WRITE DIRECT)
+
+update v035
+- many bugfixes, RASM is still in beta  ;) 
+- new directives WRITE, BANK, LET, READ, BRK, RUN, PRINT, STOP, CHARSET, INCBIN, SAVE
+
+update v032
+- a few fixes, new directives incl48, incl49 to include a binary file and crunch it on the fly
+- windows executable
+
+early stage v027
+- cleanup
+- licence
+- comment support
+- c++ wrapper
+
+early stage v026
+- wip with conditionnal assembling
+- verbose mode, debug mode
+
+early stage v024
+- local labels, duplicate labels
+- AMSDOS header wip
+- automatic save
+
+early stage v023
+- INCLUDE fix
+- error management
+
+early stage v022
+- conditionnal loops wip
+- symbol export
+
+early stage v021
+- conditionnal assembling
+- instructions fix
+- memory leak fix
+
+early stage v019
+- REPEAT wip
+
+early stage v018
+- relative adress fix
+- CPR building wip
+- Visual Studio compatibility
+
+early stage v017
+- mathematical functions premices
+- current assembly adress management
+
+early stage v016 (2017 february 16th)
+- all Z80 instructions supported (thinking about a public beta)
+- use CRC to speed up instruction 
+
+early stage v015
+- cleanup
+- a lot of instructions added
+- undocumented instructions added
+- (IX+n) management
+- flexible limit for binary output
+
+early stage v014
+- state machine for parsing
+- fast translation with expression for constants, etc.
+
+early stage v013
+- relative jumps
+- RST assembling as an expression
+- variables computed on the fly
+
+early stage v012
+- CPR building
+- crunched zone relocation
+- local labels premices
+- single quote and double quotes
+- INCBIN
+
+early stage v010
+- wip crunchzone
+
+early stage v009
+- wip computeExpression
+
+early stage v008
+- memory dump
+- wip push label, push expression
+
+early stage v007
+- label premices
+- expression management
+
+early stage v004
+- preprocessor creates a word list
+
+early stage v001
+- preprocessor draft
