@@ -1,6 +1,6 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.68"
-#define PROGRAM_DATE      "xx/12/2017"
+#define PROGRAM_VERSION   "0.69"
+#define PROGRAM_DATE      "xx/02/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
 #define RASM_VERSION PROGRAM_NAME" v"PROGRAM_VERSION
@@ -8,7 +8,7 @@
 /***
 Rasm (roudoudou assembler) Z80 assembler
 
-Check latest official release at: http://www.cpcwiki.eu/forum/programming/rasm-z80-assembler-in-beta/
+doc & latest official release at: http://www.cpcwiki.eu/forum/programming/rasm-z80-assembler-in-beta/
 
 You may send requests/bugs in the same topic
 
@@ -32,183 +32,16 @@ any  claim, damages  or other  liability,  whether in  an  action  of  contract,
 arising from,  out of  or in connection  with  the software  or  the  use  or  other  dealings in the
 Software. »
 -----------------------------------------------------------------------------------------------------
-
-Supported features:
--------------------
-
-conditionnal loops and loops:
-
-repeat <nn>
-rend
-
-repeat
-until <condition>
-
-while <condition>
-wend
-
-if/ifnot <condition> else elseif endif statement
-
-switch/case/break/default/endswitch statement
-
-a condition is defined by:
-- equality with '=='
-- greater '>'
-- greater or equal '>='
-- lower '<'
-- lower or equal '<='
-
-
-local labels with '@' in loops:
-
-repeat 50
-add hl,de
-jr c,@jump
-sbc hl,bc
-@jump
-rend
-
-all complex and undocumented instructions syntax:
-out (c),0
-in f,(c)
-res 0,(ix+0),a
-bit 0,(ix+0),a
-sll (ix+0),a
-rl  (ix+0),a
-rr  (ix+0),a
-...
-
-extended registers support:
-ixl, xl or lx style
-
-multiple instructions per line separated by 'two points':
-example: nop:nop:nop:nop
-
-almost 'free' style syntax:
-label1 label2 label3 defb 5 + 12 ,'inutile'
-
-
-supported operators:
-* mul
-/ div
-+ add
-- sub
-following operators involve an integer conversion:
-& and
-| or
-^ xor
-§ mod
-in maxam compatibility mode:
-and
-or
-xor
-mod
-
-supported functions in expression:
-sin   sinus
-cos   cosinus
-asin  arc sinus
-acos  arc cosinus
-atan  arc tangent
-int   conversion from float to integer
-floor conversion from float to first lower integer
-abs   absolute value
-ln    log neperien
-log10 log base 10
-exp   exponential
-sqrt  square root
-
-Assembly directives:
---------------------
-
-Memory directives
-protect <start>,<end> prevent memory region from writes, will trigger an error if so
-align <nn>		next instruction/data adress will be aligned on <nn>
-limit <nn>      maximum output adress (must be below or equal hardware limits)
-org <nn>[,<nn>]	code adress, optionnaly followed by output adress
-write direct <lower rom>,<upper rom>,<bank> for winape compatibility, bank parameter is set, this create a new memory space disregarding the RAM bank value
-
-Define directives
-<alias> equ <expression> create an alias of an expression
-ds / defs <n1>,<n2>	define <n1> times the byte <n2>
-db / defb		insert byte or string with quotes
-dw / defw		insert word
-defi			insert 32 bits integer
-str             insert strings. The last character of each strings has his bit 7 forced to 1 (OR #80)
-charset [p1,p2[,p3]]	same as Winape charset directive
-
-Output file directives
-amsdos			add an amsdos header to the outputed file
-buildcpr		cartridge output mode (default when using BANK)
-buildsna		snapshot output mode
-bank <nn>		in cartridge mode, select the bank where to write the code/data
-namebank <nn>,<str>	in cartridge mode, set a name for the bank (for verbose purpose)
-save	<name>,<off>,<size> save a binary file of <size> byte from <offset>
-
-Input file & compression directives
-read            	include an ascii file
-include			include an ascii file
-incbin			include a binary file (extended parameters like Winape incbin directive: offset,size,offset_high+overwrite check)
-inclz4			include a binary file and crunch with lz4
-incl48			include a binary file and crunch with lz48
-incl49			include a binary file and crunch with lz49
-inczx7			include a binary file and crunch with zx7
-incexo			include a binary file and crunch with exomizer
-lzx7			open a zx7 crunched segment
-lz4				open a lz48 crunched segment
-lz48			open a lz48 crunched segment
-lz49			open a lz49 crunched segment
-lzexo			open an exomizer crunched segment
-lzclose			close a crunched segment
-save "file",adr,size	save memory region to a file
-
-Loop and conditionnal directives
-repeat / rend
-repeat / until
-while / wend
-if/ifnot <condition> else elseif endif statement
-switch/case/break/default/endswitch statement
-
-Ignored directives:
-list	        ignored
-nolist	        ignored
-brk             ignored
-
-
-Other directives
-run <nn>        ignored*
-nocode			disable byte output
-code			enable byte output when disabled
-let             this useless keyword is ignored like in locomotive Basic
-print			print var, text or expression
-stop			stop assembling
-assert <cond>   check condition and quit if not verified
-
-command line options:
-- symbol export in Winape/Pasmo format
-- may also export local symbols, variables, alias EQU
-- symbol import
-- maxam compatibility (disable meaningless expression check)
-
-limitations:
-- unlimited sources/labels/variables/expressions size/memory workspaces
-- unlimited number of sources/labels/variables/expressions/loops
-- non crunched blocks cannot exceed memory size (64K in classic mode) before compression. It's planed to fix this.
-- Z80 instructions or directives cannot be used as label/variable
-- Rasm is not case sensitive
-
------------------------------------------------------
-
 GCC compilation:
-cc rasm_v065.c -O2 -lm -lrt
+cc rasm_v069.c -O2 -lm -lrt
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v065.c -O2
+cl.exe rasm_v069.c -O2
 
 MorphOS compilation (ixemul):
-ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v067.c
+ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v069.c
 strip rasm
 */
 
@@ -269,6 +102,8 @@ E_COMPUTE_OPERATION_AND,
 E_COMPUTE_OPERATION_OR,
 E_COMPUTE_OPERATION_MOD,
 E_COMPUTE_OPERATION_XOR,
+E_COMPUTE_OPERATION_SHL,
+E_COMPUTE_OPERATION_SHR,
 /* math functions */
 E_COMPUTE_OPERATION_SIN,
 E_COMPUTE_OPERATION_COS,
@@ -366,7 +201,7 @@ struct s_crcalias_tree {
 struct s_lz_section {
 	int iw;
 	int memstart,memend;
-	int lzversion; /* 4 -> LZ4 / 48 -> LZ48 / 49 -> LZ49 */
+	int lzversion; /* 4 -> LZ4 / 48 -> LZ48 / 49 -> LZ49 / 8 -> Exomizer */
 	int iorgzone;
 	int ibank;
 	/* idx backup */
@@ -417,11 +252,15 @@ struct s_edsk_track_global_struct *track;
 };
 
 struct s_edsk_wrapper_entry {
-char filename[11];
-unsigned char blocks[16];
+unsigned char user;
+unsigned char filename[11];
 unsigned char subcpt;
+unsigned char extendcounter;
+unsigned char reserved;
 unsigned char rc;
+unsigned char blocks[16];
 };
+
 struct s_edsk_wrapper {
 char *edsk_filename;
 struct s_edsk_wrapper_entry entry[64];
@@ -436,8 +275,7 @@ struct s_save {
 	int isize;
 	int iw;
 	int amsdos;
-	int dsk;
-	char iwdskname;
+	int dsk,face,iwdskname;
 };
 
 struct s_repeat {
@@ -621,6 +459,7 @@ struct s_assenv {
 	struct s_snapshot snapshot;
 	int bankset[9];
 	int bankused[35];
+	int bankgate[36];
 	/* parsing */
 	struct s_wordlist *wl;
 	int nbword;
@@ -1445,6 +1284,12 @@ unsigned char *MakeAMSDOSHeader(int minmem, int maxmem, char *amsdos_name) {
 
 void ExpressionFastTranslate(struct s_assenv *ae, char **ptr_expr, int fullreplace);
 
+
+int cmpAmsdosentry(const void * a, const void * b)
+{
+	return memcmp(a,b,32);
+}
+
 int cmpmacros(const void * a, const void * b)
 {
 	struct s_macro *sa,*sb;
@@ -2028,6 +1873,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
 					case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
 					case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
+					case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
+					case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
 				}
 				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
 				trigger=0;
@@ -2037,7 +1884,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		switch (c) {
 			/* parenthesis */
 			case '(':
-			case '[':
+			//case '[':
 				if (isolation>=max_isolation_depth) {
 					max_isolation_depth+=16;
 					lookf_backup=MemRealloc(lookf_backup,sizeof(int)*max_isolation_depth);
@@ -2057,7 +1904,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				allow_minus_as_sign=1;
 				break;
 			case ')':
-			case ']':
+			//case ']':
 				isolation--;
 				if (isolation<0) computing_error=COMPUTING_ERROR_CLOSING_PARENTHESIS;
 				trigger=1;
@@ -2069,6 +1916,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 			case '&':
 			case '^':
 			case '/':
+			case '[':
+			case ']':
 				trigger=1;
 				if (lookforward==0) {
 					operator1=c;
@@ -2174,6 +2023,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
 					case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
 					case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
+					case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
+					case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
 					case 0:break;
 				}
 				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
@@ -2189,6 +2040,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 						case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
 						case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
 						case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
+						case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
+						case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
 					}
 					ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
 				}
@@ -2203,9 +2056,20 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case '0':
 					/* 0x hexa value hack */
 					if (varbuffer[minusptr+1]=='X' && ((varbuffer[minusptr+2]>='0' && varbuffer[minusptr+2]<='9') || (varbuffer[minusptr+2]>='A' && varbuffer[minusptr+2]<='F'))) {
-						for (icheck=minusptr+2;varbuffer[icheck];icheck++) {
+						for (icheck=minusptr+3;varbuffer[icheck];icheck++) {
 							if ((varbuffer[icheck]>='0' && varbuffer[icheck]<='9') || (varbuffer[icheck]>='A' && varbuffer[icheck]<='F')) continue;
 							rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid hex number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+							MaxError(ae);
+							break;
+						}
+						curval=strtol(varbuffer+minusptr+2,NULL,16);
+						break;
+					} else
+					/* 0b binary value hack */
+					if (varbuffer[minusptr+1]=='X' && (varbuffer[minusptr+2]>='0' && varbuffer[minusptr+2]<='1')) {
+						for (icheck=minusptr+3;varbuffer[icheck];icheck++) {
+							if (varbuffer[icheck]>='0' && varbuffer[icheck]<='1') continue;
+							rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid binary number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
 							MaxError(ae);
 							break;
 						}
@@ -2259,6 +2123,18 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					curval=strtol(varbuffer+minusptr+1,NULL,16);
 					break;
 				default:
+					/* $ hex value hack */
+					if (varbuffer[minusptr+0]=='$' &&  ((varbuffer[minusptr+1]>='0' && varbuffer[minusptr+1]<='9') || (varbuffer[minusptr+1]>='A' && varbuffer[minusptr+1]<='F'))) {
+						for (icheck=minusptr+2;varbuffer[icheck];icheck++) {
+							if ((varbuffer[icheck]>='0' && varbuffer[icheck]<='9') || (varbuffer[icheck]>='A' && varbuffer[icheck]<='F')) continue;
+							rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid hex number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+							MaxError(ae);
+							break;
+						}
+						curval=strtol(varbuffer+minusptr+1,NULL,16);
+						break;
+					}
+					
                     crc=GetCRC(varbuffer+minusptr);
 				
 					for (imkey=0;math_keyword[imkey].mnemo[0];imkey++) {
@@ -2337,47 +2213,25 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 										} else {
 											switch (page) {
 												case 2:
-													curval=(curlabel->ibank>>2)*8+2+0xC0;break;
+													if (curlabel->ibank<36) {
+														curval=(curlabel->ibank>>2)*8+2+0xC0;
+													} else {
+														rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGESET - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+														MaxError(ae);
+														curval=curlabel->ibank;
+													}
+													break;
 												case 1:
-												switch (curlabel->ibank) {
-													case 0 :case 1:case 2:case 3:curval=0xC0;break;
-													case 4 :curval=0xC4;break;
-													case 5 :curval=0xC5;break;
-													case 6 :curval=0xC6;break;
-													case 7 :curval=0xC7;break;
-													case 8 :curval=0xCC;break;
-													case 9 :curval=0xCD;break;
-													case 10:curval=0xCE;break;
-													case 11:curval=0xCF;break;
-													case 12:curval=0xD4;break;
-													case 13:curval=0xD5;break;
-													case 14:curval=0xD6;break;
-													case 15:curval=0xD7;break;
-													case 16:curval=0xDC;break;
-													case 17:curval=0xDD;break;
-													case 18:curval=0xDE;break;
-													case 19:curval=0xDF;break;
-													case 20:curval=0xE4;break;
-													case 21:curval=0xE5;break;
-													case 22:curval=0xE6;break;
-													case 23:curval=0xE7;break;
-													case 24:curval=0xEC;break;
-													case 25:curval=0xED;break;
-													case 26:curval=0xEE;break;
-													case 27:curval=0xEF;break;
-													case 28:curval=0xF4;break;
-													case 29:curval=0xF5;break;
-													case 30:curval=0xF6;break;
-													case 31:curval=0xF7;break;
-													case 32:curval=0xFC;break;
-													case 33:curval=0xFD;break;
-													case 34:curval=0xFE;break;
-													case 35:curval=0xFF;break;
-												}
-												break;
-												default:
-												case 0:
-												curval=curlabel->ibank;break;
+													if (curlabel->ibank<36) {
+															curval=ae->bankgate[curlabel->ibank];
+													} else {
+														rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGE - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+														MaxError(ae);
+														curval=curlabel->ibank;
+													}
+													break;
+												case 0:curval=curlabel->ibank;break;
+												default:rasm_printf(ae,"[%s] INTERNAL ERROR Error line %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx));exit(-664);
 											}
 										}
 									} else {
@@ -2389,47 +2243,25 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 												if (page) {
 													switch (page) {
 														case 2:
-															curval=(curlabel->ibank>>2)*8+2+0xC0;break;
+															if (curlabel->ibank<36) {
+																curval=(curlabel->ibank>>2)*8+2+0xC0;
+															} else {
+																rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGESET - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+																MaxError(ae);
+																curval=curlabel->ibank;
+															}
+															break;
 														case 1:
-														switch (curlabel->ibank) {
-															case 0 :case 1:case 2:case 3:curval=0xC0;break;
-															case 4 :curval=0xC4;break;
-															case 5 :curval=0xC5;break;
-															case 6 :curval=0xC6;break;
-															case 7 :curval=0xC7;break;
-															case 8 :curval=0xCC;break;
-															case 9 :curval=0xCD;break;
-															case 10:curval=0xCE;break;
-															case 11:curval=0xCF;break;
-															case 12:curval=0xD4;break;
-															case 13:curval=0xD5;break;
-															case 14:curval=0xD6;break;
-															case 15:curval=0xD7;break;
-															case 16:curval=0xDC;break;
-															case 17:curval=0xDD;break;
-															case 18:curval=0xDE;break;
-															case 19:curval=0xDF;break;
-															case 20:curval=0xE4;break;
-															case 21:curval=0xE5;break;
-															case 22:curval=0xE6;break;
-															case 23:curval=0xE7;break;
-															case 24:curval=0xEC;break;
-															case 25:curval=0xED;break;
-															case 26:curval=0xEE;break;
-															case 27:curval=0xEF;break;
-															case 28:curval=0xF4;break;
-															case 29:curval=0xF5;break;
-															case 30:curval=0xF6;break;
-															case 31:curval=0xF7;break;
-															case 32:curval=0xFC;break;
-															case 33:curval=0xFD;break;
-															case 34:curval=0xFE;break;
-															case 35:curval=0xFF;break;
-														}
-														break;
-														default:
-														case 0:
-														curval=curlabel->ibank;break;
+															if (curlabel->ibank<36) {
+																	curval=ae->bankgate[curlabel->ibank];
+															} else {
+																rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGE - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+																MaxError(ae);
+																curval=curlabel->ibank;
+															}
+															break;
+														case 0:curval=curlabel->ibank;break;
+														default:rasm_printf(ae,"[%s] INTERNAL ERROR Error line %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx));exit(-664);
 													}
 												}
 											}
@@ -2516,6 +2348,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
 					case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
 					case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
+					case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
+					case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
 				}
 				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
 				trigger=0;
@@ -2531,7 +2365,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		}
 	}
 
-	/* duplicated bloc, to handle the last trigger, if any */
+	/* duplicated block due to non recursive algo, to handle the last trigger, if any */
 	while (lookforward) {
 		if (lookforward==2) {
 			curoperator=operator2;
@@ -2549,6 +2383,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 			case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
 			case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
 			case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
+			case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
+			case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
 		}
 		ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
 		if (lookforward) {
@@ -2563,6 +2399,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case '*':compiled_operation.operation_type=E_COMPUTE_OPERATION_MUL;break;
 				case '/':compiled_operation.operation_type=E_COMPUTE_OPERATION_DIV;break;
 				case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
+				case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
+				case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
 			}
 			ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
 		}
@@ -2619,6 +2457,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_OR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]|(int)accu[paccu-1])&0xFFFF;paccu--;break;
 				case E_COMPUTE_OPERATION_XOR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]^(int)accu[paccu-1])&0xFFFF;paccu--;break;
 				case E_COMPUTE_OPERATION_MOD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]%(int)accu[paccu-1])&0xFFFF;paccu--;break;
+				case E_COMPUTE_OPERATION_SHL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2])<<((int)accu[paccu-1]);paccu--;break;
+				case E_COMPUTE_OPERATION_SHR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2])>>((int)accu[paccu-1]);paccu--;break;				
 				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=(int)sin(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_COS:if (paccu>0) accu[paccu-1]=(int)cos(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=(int)asin(accu[paccu-1])*180.0/3.1415926545;break;
@@ -2663,6 +2503,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_OR:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))|((int)floor(accu[paccu-1]+0.5));paccu--;break;
 				case E_COMPUTE_OPERATION_XOR:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))^((int)floor(accu[paccu-1]+0.5));paccu--;break;
 				case E_COMPUTE_OPERATION_MOD:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))%((int)floor(accu[paccu-1]+0.5));paccu--;break;
+				case E_COMPUTE_OPERATION_SHL:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))<<((int)floor(accu[paccu-1]+0.5));paccu--;break;
+				case E_COMPUTE_OPERATION_SHR:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))>>((int)floor(accu[paccu-1]+0.5));paccu--;break;				
 				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=sin(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_COS:if (paccu>0) accu[paccu-1]=cos(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=asin(accu[paccu-1])*180.0/3.1415926545;break;
@@ -2691,8 +2533,10 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	} else {
 		if (paccu) {
 			rasm_printf(ae,"[%s] Error line %d - INTERNAL ERROR ComputeExpression stack still contains %d values!",GetExpFile(ae,didx),GetExpLine(ae,didx),paccu);
+			MaxError(ae);
 		} else {
 			rasm_printf(ae,"[%s] Error line %d - INTERNAL ERROR ComputeExpression nothing in the stack",GetExpFile(ae,didx),GetExpLine(ae,didx));
+			MaxError(ae);
 		}
 		return accu[paccu-1];
 	}
@@ -3267,7 +3111,10 @@ int EDSK_getdirid(struct s_edsk_wrapper *curwrap) {
 	
 	int ie;
 	for (ie=0;ie<64;ie++) {
-		if (curwrap->entry[ie].rc==0xE5 || curwrap->entry[ie].rc==0x00) return ie;
+		if (curwrap->entry[ie].user==0xE5) {
+			//printf("getdirid -> %d\n",ie);
+			return ie;
+		}
 	}
 	return -1;
 }
@@ -3290,19 +3137,237 @@ char *MakeAMSDOS_name(char *filename)
 //printf("[%s]->[%s]\n",filename,amsdos_name);
 	return amsdos_name;
 }
-int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned char *indata,int insize, int offset)
+
+
+void EDSK_load(struct s_assenv *ae,struct s_edsk_wrapper *curwrap, char *edskfilename, int face)
 {
 	#undef FUNC
-	#define FUNC "EDSK_addfile"
+	#define FUNC "EDSK_load"
 
+	unsigned char header[256];
+	unsigned char *data;
+	int tracknumber,sidenumber,tracksize,disksize;
+	int i,b,s,f,t,curtrack,sectornumber,sectorsize,sectorid,reallength;
+	int currenttrackposition=0,currentsectorposition,tmpcurrentsectorposition;
+	unsigned char checksectorid[9];
+	int curblock=0,curoffset=0;
+	
+	if (FileReadBinary(edskfilename,(char*)&header,0x100)!=0x100) {
+		logerr("Cannot read EDSK header!");
+		exit(ABORT_ERROR);
+	}
+	if (strncmp(header,"MV - CPC",8)==0) {
+		loginfo("updating DSK to EDSK [%s] / creator: %-14.14s",edskfilename,header+34);
+		
+		tracknumber=header[34+14];
+		sidenumber=header[34+14+1];
+		tracksize=header[34+14+1+1]+header[34+14+1+1+1]*256;
+		loginfo("tracks: %d  sides:%d   track size:%d",tracknumber,sidenumber,tracksize);
+		if (tracknumber>40 || sidenumber>2) {
+			rasm_printf(ae,"[%s] DSK format is not supported in update mode\n",edskfilename);
+			exit(ABORT_ERROR);
+		}
+		if (face>=sidenumber) {
+			rasm_printf(ae,"[%s] DSK has no face %d - DSK updated\n",edskfilename,face);
+			return;
+		}
+
+		data=MemMalloc(tracksize*tracknumber*sidenumber);
+		memset(data,0,tracksize*tracknumber*sidenumber);
+		if (FileReadBinary(edskfilename,data,tracksize*tracknumber*sidenumber)!=tracksize*tracknumber*sidenumber) {
+			rasm_printf(ae,"Cannot read DSK tracks!");
+			exit(ABORT_ERROR);
+		}
+		//loginfo("track data read (%dkb)",tracksize*tracknumber*sidenumber/1024);
+		f=face;
+		for (t=0;t<tracknumber;t++) {
+			curtrack=t*sidenumber+f;
+
+			i=(t*sidenumber+f)*tracksize;
+			if (strncmp(data+i,"Track-Info\r\n",12)) {
+				logerr("Invalid track information block side %d track %d",f,t);
+				exit(ABORT_ERROR);
+			}
+			sectornumber=data[i+21];
+			sectorsize=data[i+20];
+			if (sectornumber!=9 || sectorsize!=2) {
+				logerr("Cannot read [%s] Invalid DATA format",edskfilename);
+				exit(ABORT_ERROR);
+			}
+			memset(checksectorid,0,sizeof(checksectorid));			
+			/* we want DATA format */
+			for (s=0;s<sectornumber;s++) {
+				if (t!=data[i+24+8*s]) {
+					logerr("Invalid track number in sector %02X track %d",data[i+24+8*s+2],t);
+					exit(ABORT_ERROR);
+				}
+				if (f!=data[i+24+8*s+1]) {
+					logerr("Invalid side number in sector %02X track %d",data[i+24+8*s+2],t);
+					exit(ABORT_ERROR);
+				}
+				if (data[i+24+8*s+2]<0xC1 || data[i+24+8*s+2]>0xC9) {
+					logerr("Invalid sector ID in sector %02X track %d",data[i+24+8*s+2],t);
+					exit(ABORT_ERROR);
+				} else {
+					checksectorid[data[i+24+8*s+2]-0xC1]=1;
+				}				
+				if (data[i+24+8*s+3]!=2) {
+					logerr("Invalid sector size in sector %02X track %d",data[i+24+8*s+2],t);
+					exit(ABORT_ERROR);
+				}
+			}
+			for (s=0;s<sectornumber;s++) {
+				if (!checksectorid[s]) {
+					logerr("Missing sector %02X track %d",s+0xC1,t);
+					exit(ABORT_ERROR);
+				}
+			}
+			/* piste à piste on lit les blocs DANS L'ORDRE LOGIQUE!!! */
+			for (b=0xC1;b<=0xC9;b++)
+			for (s=0;s<sectornumber;s++) {
+				if (data[i+24+8*s+2]==b) {
+					memcpy(&curwrap->blocks[curblock][curoffset],&data[i+0x100+s*512],512);
+					curoffset+=512;
+					if (curoffset>=1024) {
+						curoffset=0;
+						curblock++;
+					}
+				}
+			}
+		}
+	} else if (strncmp(header,"EXTENDED",8)==0) {
+		loginfo("updating EDSK [%s] / creator: %-14.14s",edskfilename,header+34);
+		tracknumber=header[34+14];
+		sidenumber=header[34+14+1];
+		// not in EDSK tracksize=header[34+14+1+1]+header[34+14+1+1+1]*256;
+		//loginfo("tracks: %d  sides:%d",tracknumber,sidenumber);
+		if (tracknumber>40 || sidenumber>2) {
+			rasm_printf(ae,"[%s] DSK format is not supported in update mode\n",edskfilename);
+			exit(ABORT_ERROR);
+		}
+		if (face>=sidenumber) {
+			rasm_printf(ae,"[%s] DSK has no face %d - DSK updated\n",edskfilename,face);
+			return;
+		}
+
+		for (i=disksize=0;i<tracknumber*sidenumber;i++) disksize+=header[0x34+i]*256;
+		//loginfo("total track size: %dkb",disksize/1024);
+
+		data=MemMalloc(disksize);
+		memset(data,0,disksize);
+		if (FileReadBinary(edskfilename,data,disksize)!=disksize) {
+			logerr("Cannot read DSK tracks!");
+			exit(ABORT_ERROR);
+		}
+
+		f=face;
+		for (t=0;t<tracknumber;t++) {
+			curtrack=t*sidenumber+f;
+			i=currenttrackposition;
+			currentsectorposition=i+0x100;
+
+			if (!header[0x34+curtrack] && t<40) {
+				printf("Unexpected unformated track Side %d Track %02d",f,t);
+			} else {
+				currenttrackposition+=header[0x34+curtrack]*256;
+
+				if (strncmp(data+i,"Track-Info\r\n",12)) {
+					logerr("Invalid track information block side %d track %d",f,t);
+					exit(ABORT_ERROR);
+				}
+				sectornumber=data[i+21];
+				sectorsize=data[i+20];
+				if (sectornumber!=9 || sectorsize!=2) {
+					rasm_printf(ae,"Unsupported track %d",t);
+					exit(ABORT_ERROR);
+				}
+				memset(checksectorid,0,sizeof(checksectorid));			
+				/* we want DATA format */
+				for (s=0;s<sectornumber;s++) {
+					sectorid=data[i+24+8*s+2];
+					if (sectorid>=0xC1 && sectorid<=0xC9) checksectorid[sectorid-0xC1]=1; else {
+						rasm_printf(ae,"invalid sector id for DATA track %d",t);
+						return;
+					}
+					sectorsize=data[i+24+8*s+3];
+					if (sectorsize!=2) {
+						rasm_printf(ae,"invalid sector size track %d",t);
+						return;
+					}
+					reallength=data[i+24+8*s+6]+data[i+24+8*s+7]*256; /* real length stored */
+					if (reallength!=512) {
+						rasm_printf(ae,"invalid sector length for track %d",t);
+						return;
+					}
+				}
+
+				/* piste à piste on lit les blocs DANS L'ORDRE LOGIQUE!!! */
+				for (b=0xC1;b<=0xC9;b++) {
+					tmpcurrentsectorposition=currentsectorposition;
+					for (s=0;s<sectornumber;s++) {
+						if (b==data[i+24+8*s+2]) {
+							memcpy(&curwrap->blocks[curblock][curoffset],&data[tmpcurrentsectorposition],512);
+							curoffset+=512;
+							if (curoffset>=1024) {
+								curoffset=0;
+								curblock++;
+							}
+						}
+						reallength=data[i+24+8*s+6]+data[i+24+8*s+7]*256;
+						tmpcurrentsectorposition+=reallength;
+					}
+				}
+			}
+		}
+		
+		
+	} else {
+		logerr("file [%s] is not a valid (E)DSK floppy image",edskfilename);
+		exit(-923);
+	}
+	FileReadBinaryClose(edskfilename);
+	
+	/* Rasm management of (e)DSK files is AMSDOS compatible, just need to copy CATalog blocks but sort them... */
+	memcpy(&curwrap->entry[0],curwrap->blocks[0],1024);
+	memcpy(&curwrap->entry[32],curwrap->blocks[1],1024);
+	/* tri des entrées selon le user */
+	qsort(curwrap->entry,64,sizeof(struct s_edsk_wrapper_entry),cmpAmsdosentry);
+	curwrap->nbentry=64;
+	for (i=0;i<64;i++) {
+		if (curwrap->entry[i].user==0xE5) {
+			curwrap->nbentry=i;
+			break;
+		}
+	}
+#if 0
+	printf("%d entr%s found\n",curwrap->nbentry,curwrap->nbentry>1?"ies":"y");
+	for (i=0;i<curwrap->nbentry;i++) {
+		printf("[%02d] - ",i);
+		if (curwrap->entry[i].user<16) {
+			printf("U%02d [%-8.8s.%c%c%c] %c%c subcpt=#%02X rc=#%02X blocks=",curwrap->entry[i].user,curwrap->entry[i].filename,
+			curwrap->entry[i].filename[8]&0x7F,curwrap->entry[i].filename[9]&0x7F,curwrap->entry[i].filename[10],
+			curwrap->entry[i].filename[8]&0x80?'P':'-',curwrap->entry[i].filename[9]&0x80?'H':'-',
+			curwrap->entry[i].subcpt,curwrap->entry[i].rc);
+			for (b=0;b<16;b++) if (curwrap->entry[i].blocks[b]) printf("%s%02X",b>0?" ":"",curwrap->entry[i].blocks[b]); else printf("%s  ",b>0?" ":"");
+			if (i&1) printf("\n"); else printf(" | ");
+		} else {
+			printf("free entry                  =    rc=    blocks=                                               ");
+			if (i&1) printf("\n"); else printf(" | ");
+		}
+	}
+	if (i&1) printf("\n");
+#endif
+}
+
+struct s_edsk_wrapper *EDSK_select(struct s_assenv *ae,char *edskfilename, int facenumber)
+{
+	#undef FUNC
+	#define FUNC "EDSK_select"
+	
 	struct s_edsk_wrapper newwrap={0},*curwrap=NULL;
-	char amsdos_name[12];
-	int idsk,j,i,ia,ib,ie,filesize,fsector,idxdata;
-	int fb[180],rc,idxb;
-	unsigned char *data=NULL;
-	int size=0;
-	int firstblock,lastblock;
-
+	int i;
+	
+	/* check if there is a DSK in memory */
 	for (i=0;i<ae->nbedskwrapper;i++) {
 		if (!strcmp(ae->edsk_wrapper[i].edsk_filename,edskfilename)) {
 			curwrap=&ae->edsk_wrapper[i];
@@ -3310,27 +3375,52 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 		}
 	}
 	if (i==ae->nbedskwrapper) {
+		/* not in memory, create an empty struct */
 		ObjectArrayAddDynamicValueConcat((void**)&ae->edsk_wrapper,&ae->nbedskwrapper,&ae->maxedskwrapper,&newwrap,sizeof(struct s_edsk_wrapper));
 		curwrap=&ae->edsk_wrapper[ae->nbedskwrapper-1];
 		curwrap->edsk_filename=TxtStrDup(edskfilename);
 		memset(curwrap->entry,0xE5,sizeof(struct s_edsk_wrapper_entry)*64);
+		memset(curwrap->blocks[0],0xE5,1024);
+		memset(curwrap->blocks[1],0xE5,1024);
+		curwrap->face=facenumber;
+		/* and load files if the DSK exists on disk */
+		if (FileExists(edskfilename)) {
+			EDSK_load(ae,curwrap,edskfilename,facenumber);
+		}
 	}
+	return curwrap;
+}
+
+int EDSK_addfile(struct s_assenv *ae,char *edskfilename,int facenumber, char *filename,unsigned char *indata,int insize, int offset)
+{
+	#undef FUNC
+	#define FUNC "EDSK_addfile"
+
+	struct s_edsk_wrapper *curwrap=NULL;
+	char amsdos_name[12]={0};
+	int idsk,j,i,ia,ib,ie,filesize,fsector,idxdata;
+	int fb[180],rc,idxb;
+	unsigned char *data=NULL;
+	int size=0;
+	int firstblock,lastblock;
+
+	curwrap=EDSK_select(ae,edskfilename,facenumber);
+	
 	/* update struct */
 	size=insize+128;
 	data=MemMalloc(size);
 	memcpy(amsdos_name,MakeAMSDOS_name(filename),11);
 	memcpy(data,MakeAMSDOSHeader(offset,offset+insize,amsdos_name),128);
 	memcpy(data+128,indata,insize);
-
 	/* overwrite check */
 	for (i=0;i<curwrap->nbentry;i++) {
-		if (!strcmp(curwrap->entry[i].filename,amsdos_name)) {
+		if (!strncmp(curwrap->entry[i].filename,amsdos_name,11)) {
 			if (!ae->edskoverwrite) {
 				rasm_printf(ae,"Cannot save [%s] in edsk [%s] with overwrite disabled as the file already exists\n",filename,edskfilename);
 				return 0;
 			} else {
 				/* overwriting previous file */
-				printf("dbg: overwriting previous file entry [%s] in dsk\n",filename);
+				//printf("dbg: overwriting previous file entry [%s] in dsk\n",filename);
 				memset(&curwrap->entry[i],0xE5,sizeof(struct s_edsk_wrapper_entry));
 			}
 		}
@@ -3340,9 +3430,9 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 	for (i=2;i<180;i++) fb[i]=1;
 	for (i=0;i<curwrap->nbentry;i++) {
 		if (curwrap->entry[i].rc!=0xE5 && curwrap->entry[i].rc!=0) {
-			/* nombre de blocs à lire */
+			/* entry found, compute number of blocks to read */
 			rc=curwrap->entry[i].rc/8;
-			if (curwrap->entry[i].rc%8) rc++; /* ajustement en lecture */
+			if (curwrap->entry[i].rc%8) rc++; /* adjust value */
 			/* mark as used */
 			for (j=0;j<rc;j++) {
 				fb[curwrap->entry[i].blocks[j]]=0;
@@ -3360,7 +3450,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 			/* extended entry */
 			if ((ie=EDSK_getdirid(curwrap))==-1)  {
 				rasm_printf(ae,"FATAL ERROR edsk [%s] DIRECTORY FULL\n",edskfilename);
-	MemFree(data);
+				MemFree(data);
 				return 0;
 			}
 			if (curwrap->nbentry<=ie) curwrap->nbentry=ie+1;
@@ -3368,7 +3458,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 			for (i=0;i<16;i++) {
 				if ((ib=EDSK_getblockid(fb))==-1) {
 					rasm_printf(ae,"FATAL ERROR edsk [%s] DISK FULL\n",edskfilename);
-	MemFree(data);
+					MemFree(data);
 					return 0;
 				} else {
 					if (firstblock==-1) firstblock=ib;
@@ -3384,13 +3474,14 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 			memcpy(curwrap->entry[ie].filename,amsdos_name,11);
 			curwrap->entry[ie].subcpt=ia;
 			curwrap->entry[ie].rc=0x80;
+			curwrap->entry[ie].user=0;
 			ia++;
 			idxb=0;
 		} else {
 			/* last entry */
 			if ((ie=EDSK_getdirid(curwrap))==-1)  {
 				rasm_printf(ae,"FATAL ERROR edsk [%s] DIRECTORY FULL\n",edskfilename);
-	MemFree(data);
+				MemFree(data);
 				return 0;
 			}
 			if (curwrap->nbentry<=ie) curwrap->nbentry=ie+1;
@@ -3403,7 +3494,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 			for (i=0;i<16 && filesize>0;i++) {
 				if ((ib=EDSK_getblockid(fb))==-1) {
 					rasm_printf(ae,"FATAL ERROR edsk [%s] DISK FULL\n",edskfilename);
-	MemFree(data);
+					MemFree(data);
 					return 0;
 				} else {
 					if (firstblock==-1) firstblock=ib;
@@ -3419,6 +3510,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 			filesize=0;
 			memcpy(curwrap->entry[ie].filename,amsdos_name,11);
 			curwrap->entry[ie].subcpt=ia;
+			curwrap->entry[ie].user=0;
 		}
 	}
 
@@ -3435,7 +3527,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,char *filename,unsigned 
 void EDSK_build_amsdos_directory(struct s_edsk_wrapper *face)
 {
 	#undef FUNC
-	#define FUNC "EDSK_build_directory"
+	#define FUNC "EDSK_build_amsdos_directory"
 	
 	unsigned char amsdosdir[2048]={0};
 	int i,idx=0,b;
@@ -3444,10 +3536,9 @@ void EDSK_build_amsdos_directory(struct s_edsk_wrapper *face)
 	
 	
 //printf("build amsdos dir with %d entries\n",face->nbentry);	
-	memset(amsdosdir,0xE5,2048);
 	for (i=0;i<face->nbentry;i++) {
 		if (face->entry[i].rc && face->entry[i].rc!=0xE5) {
-			amsdosdir[idx]=0;
+			amsdosdir[idx]=face->entry[i].user;
 			memcpy(amsdosdir+idx+1,face->entry[i].filename,11);
 			amsdosdir[idx+12]=face->entry[i].subcpt;
 			amsdosdir[idx+13]=0;
@@ -3467,7 +3558,11 @@ void EDSK_build_amsdos_directory(struct s_edsk_wrapper *face)
 		}
 		idx+=32;
 	}
-	
+	for (i=face->nbentry;i<64;i++) {
+		//if (i==face->nbentry) printf("filling amsdos remaining entries (%d) with #E5\n",64-face->nbentry);
+		memset(amsdosdir+idx,0xE5,32);
+		idx+=32;
+	}
 	memcpy(face->blocks[0],amsdosdir,1024);
 	memcpy(face->blocks[1],amsdosdir+1024,1024);
 }
@@ -3487,7 +3582,6 @@ void EDSK_write_file(struct s_assenv *ae,struct s_edsk_wrapper *faceA,struct s_e
 	/* création des deux blocs du directory par face */
 	EDSK_build_amsdos_directory(faceA);
 	EDSK_build_amsdos_directory(faceB);
-	
 	/* écriture header */
 	strcpy(header,"EXTENDED CPC DSK File\r\nDisk-Info\r\n");
 	strcpy(header+0x22,RASM_VERSION);
@@ -3620,7 +3714,7 @@ void PopAllSave(struct s_assenv *ae)
 				dskfilename=TxtStrDup(ae->wl[ae->save[is].iwdskname].w);
 				dskfilename[strlen(dskfilename)-1]=0;
 				
-				if (!EDSK_addfile(ae,dskfilename+1,filename,(char*)ae->mem[ae->save[is].ibank]+offset,size,offset)) {
+				if (!EDSK_addfile(ae,dskfilename+1,ae->save[is].face,filename,(char*)ae->mem[ae->save[is].ibank]+offset,size,offset)) {
 					erreur++;
 					break;
 				}
@@ -7690,9 +7784,22 @@ void __SAVE(struct s_assenv *ae) {
 							cursave.dsk=1;
 							if (!ae->wl[ae->idx+4].t) {
 								cursave.iwdskname=ae->idx+5;
+								if (!ae->wl[ae->idx+5].t) {
+									/* face selection - 0 as default */
+									switch (ae->wl[ae->idx+6].w[0]) {
+										cursave.face=1;
+											break;
+										case '0':
+										case 'A':
+										default:
+											cursave.face=0;
+											break;
+									}
+								}
 							} else {
 								if (ae->nbsave && ae->save[ae->nbsave-1].iwdskname!=-1) {
-									cursave.iwdskname=ae->save[ae->nbsave-1].iwdskname; /* previous selection */
+									cursave.iwdskname=ae->save[ae->nbsave-1].iwdskname; /* previous DSK */
+									cursave.face=ae->save[ae->nbsave-1].face; /* previous face */
 								} else {
 									cursave.iwdskname=-1;
 									rasm_printf(ae,"[%s] Error line %d - cannot autoselect DSK as there was not a previous selection\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
@@ -8689,7 +8796,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 		}
 		/*********************************
 		**********************************
-                       B R E A K P O I N T S
+			   B R E A K P O I N T S
 		**********************************
 		*********************************/
 		if (ae->export_brk) {
@@ -8919,7 +9026,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	#undef FUNC
 	#define FUNC "PreProcessing"
 
-	#define CharWord "@ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.=_($)][+-*/^%#|&'\"\\§}{"
+	#define CharWord "@ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.=_($)][+-*/^%#|&'\"\\§}{[]"
 
 	struct s_assenv *ae=NULL;
 	struct s_wordlist curw={0};
@@ -8988,6 +9095,44 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		exit(349);
 	}
 
+	for (i=0;i<36;i++) {
+		switch (i) {
+		case 0 :case 1:case 2:case 3:ae->bankgate[i]=0xC0;break;
+		case 4 :ae->bankgate[i]=0xC4;break;
+		case 5 :ae->bankgate[i]=0xC5;break;
+		case 6 :ae->bankgate[i]=0xC6;break;
+		case 7 :ae->bankgate[i]=0xC7;break;
+		case 8 :ae->bankgate[i]=0xCC;break;
+		case 9 :ae->bankgate[i]=0xCD;break;
+		case 10:ae->bankgate[i]=0xCE;break;
+		case 11:ae->bankgate[i]=0xCF;break;
+		case 12:ae->bankgate[i]=0xD4;break;
+		case 13:ae->bankgate[i]=0xD5;break;
+		case 14:ae->bankgate[i]=0xD6;break;
+		case 15:ae->bankgate[i]=0xD7;break;
+		case 16:ae->bankgate[i]=0xDC;break;
+		case 17:ae->bankgate[i]=0xDD;break;
+		case 18:ae->bankgate[i]=0xDE;break;
+		case 19:ae->bankgate[i]=0xDF;break;
+		case 20:ae->bankgate[i]=0xE4;break;
+		case 21:ae->bankgate[i]=0xE5;break;
+		case 22:ae->bankgate[i]=0xE6;break;
+		case 23:ae->bankgate[i]=0xE7;break;
+		case 24:ae->bankgate[i]=0xEC;break;
+		case 25:ae->bankgate[i]=0xED;break;
+		case 26:ae->bankgate[i]=0xEE;break;
+		case 27:ae->bankgate[i]=0xEF;break;
+		case 28:ae->bankgate[i]=0xF4;break;
+		case 29:ae->bankgate[i]=0xF5;break;
+		case 30:ae->bankgate[i]=0xF6;break;
+		case 31:ae->bankgate[i]=0xF7;break;
+		case 32:ae->bankgate[i]=0xFC;break;
+		case 33:ae->bankgate[i]=0xFD;break;
+		case 34:ae->bankgate[i]=0xFE;break;
+		case 35:ae->bankgate[i]=0xFF;break;
+		}
+	}
+	
 	memcpy(ae->snapshot.idmark,"MV - SNA",8);
 	ae->snapshot.version=3;
 	ae->snapshot.registers.IM=1;
@@ -9127,6 +9272,14 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		if (!c) {
 			l++;
 			idx=0;
+			continue;
+		} else if (c=='>' && listing[l].listing[idx]=='<' && !quote_type) {
+			listing[l].listing[idx-1]=']';
+			listing[l].listing[idx++]=' ';
+			continue;
+		} else if (c=='<' && listing[l].listing[idx]=='<' && !quote_type) {
+			listing[l].listing[idx-1]='[';
+			listing[l].listing[idx++]=' ';
 			continue;
 		} else if (c=='\\' && !waiting_quote) {
 			idx++;
@@ -9821,7 +9974,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 
 void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, float rough, int export_local, char **labelfilename,
 	 int export_var, int export_equ, char *symbol_name, char *binary_name, char *cartridge_name, char *snapshot_name,
-	 int export_sna, int checkmode, int export_snabrk, int maxerr, char *breakpoint_name, int export_brk)
+	 int export_sna, int checkmode, int export_snabrk, int maxerr, char *breakpoint_name, int export_brk, int edskoverwrite)
 {
 	#undef FUNC
 	#define FUNC "Rasm"
@@ -9837,6 +9990,7 @@ void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, flo
 	ae->export_sna=export_sna;
 	ae->export_snabrk=export_snabrk;
 	ae->export_brk=export_brk;
+	ae->edskoverwrite=edskoverwrite;
 	ae->rough=rough;
 	ae->maxerr=maxerr;
 	ae->breakpoint_name=breakpoint_name;
@@ -10304,6 +10458,8 @@ void Usage(int help)
 		printf("-m  maxam style calculations\n");
 		printf("BANKING:\n");
 		printf("-c  cartridge/snapshot summary\n");
+		printf("EDSK generation/update:\n");
+		printf("-eo overwrite files on disk if it already exists\n");
 		printf("SNAPSHOT:\n");
 		printf("-sb export breakpoints in snapshot (BRKS & BRKC chunks)\n");
 		printf("-ss export symbols in the snapshot (SYMB chunk for ACE)\n");
@@ -10457,7 +10613,8 @@ printf("\n\n");
 */
 int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough, int *export_local,
 	 char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name,
-	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk)
+	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk,
+	 int *edskoverwrite)
 {
 	#undef FUNC
 	#define FUNC "ParseOptions"
@@ -10468,6 +10625,8 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 		RasmAutotest();
 	} else if (strcmp(argv[i],"-eb")==0) {
 		*export_brk=1;
+	} else if (strcmp(argv[i],"-eo")==0) {
+		*edskoverwrite=1;
 	} else if (strcmp(argv[i],"-no")==0) {
 		*checkmode=1;
 	} else if (argv[i][0]=='-')	{
@@ -10618,7 +10777,8 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 */
 void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough,
 	 int *export_local, char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name,
-	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk)
+	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk,
+	 int *edskoverwrite)
 {
 	#undef FUNC
 	#define FUNC "GetParametersFromCommandLine"
@@ -10627,7 +10787,7 @@ void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *e
 	for (i=1;i<argc;i++)
 		i+=ParseOptions(&argv[i],argc-i,filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,
 			export_var,export_equ,symbol_name,binary_name,cartridge_name,snapshot_name,export_sna,checkmode,
-			export_snabrk,maxerr,breakpoint_name,export_brk);
+			export_snabrk,maxerr,breakpoint_name,export_brk,edskoverwrite);
 
 	if (!*filename) Usage(0);
 	if (*export_local && !*export_sym) Usage(1); // à revoir?
@@ -10659,6 +10819,7 @@ int main(int argc, char **argv)
 	int verbose=0;
 	int checkmode=0;
 	int maxerr=20;
+	int edskoverwrite=0;
 	float rough=0.5;
 	char *symbol_name=NULL;
 	char *binary_name=NULL;
@@ -10668,9 +10829,10 @@ int main(int argc, char **argv)
 
 	GetParametersFromCommandLine(argc,argv,&filename,&export_sym,&verbose,&outputfilename,&rough,&export_local,&labelfilename,
 		&export_var,&export_equ,&symbol_name,&binary_name,&cartridge_name,&snapshot_name,&export_sna,&checkmode,&export_snabrk,
-		&maxerr,&breakpoint_name,&export_brk);
+		&maxerr,&breakpoint_name,&export_brk,&edskoverwrite);
 	Rasm(filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,export_var,export_equ,symbol_name,
-		binary_name,cartridge_name,snapshot_name,export_sna,checkmode,export_snabrk,maxerr,breakpoint_name,export_brk);
+		binary_name,cartridge_name,snapshot_name,export_sna,checkmode,export_snabrk,maxerr,breakpoint_name,export_brk,
+		edskoverwrite);
 	#ifdef RDD
 	/* private dev lib tools */
 	CloseLibrary();

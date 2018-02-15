@@ -1,3 +1,9 @@
+update v0.69
+- added $ prefix for hex values
+- added 0xb prefix for binary values
+- added shifting operators << and >>
+- EDSK update/generation improvements (make backups before use!)
+
 update v0.68
 - Morphos compatibility code
 - better error messages
