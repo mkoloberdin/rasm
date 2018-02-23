@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.69"
+#define PROGRAM_VERSION   "0.71"
 #define PROGRAM_DATE      "xx/02/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -33,15 +33,15 @@ arising from,  out of  or in connection  with  the software  or  the  use  or  o
 Software. »
 -----------------------------------------------------------------------------------------------------
 GCC compilation:
-cc rasm_v069.c -O2 -lm -lrt
+cc rasm_v071.c -O2 -lm -lrt
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v069.c -O2
+cl.exe rasm_v071.c -O2
 
 MorphOS compilation (ixemul):
-ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v069.c
+ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v071.c
 strip rasm
 */
 
@@ -117,6 +117,8 @@ E_COMPUTE_OPERATION_ASIN,
 E_COMPUTE_OPERATION_ACOS,
 E_COMPUTE_OPERATION_ATAN,
 E_COMPUTE_OPERATION_EXP,
+E_COMPUTE_OPERATION_LOW,
+E_COMPUTE_OPERATION_HIGH,
 E_COMPUTE_OPERATION_END
 };
 
@@ -478,7 +480,7 @@ struct s_assenv {
 	/* expressions */
 	struct s_expression *expression;
 	int ie,me;
-	int maxam;
+	int maxam,as80;
 	float rough;
 	/* label */
 	struct s_label *label;
@@ -605,6 +607,8 @@ struct s_math_keyword math_keyword[]={
 {"ACOS",0,E_COMPUTE_OPERATION_ACOS},
 {"ATAN",0,E_COMPUTE_OPERATION_ATAN},
 {"EXP",0,E_COMPUTE_OPERATION_EXP},
+{"LO",0,E_COMPUTE_OPERATION_LOW},
+{"HI",0,E_COMPUTE_OPERATION_HIGH},
 {"",0,-1}
 };
 
@@ -2134,8 +2138,19 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 						curval=strtol(varbuffer+minusptr+1,NULL,16);
 						break;
 					}
+					/* @ octal value hack */
+					if (varbuffer[minusptr+0]=='@' &&  ((varbuffer[minusptr+1]>='0' && varbuffer[minusptr+1]<='7'))) {
+						for (icheck=minusptr+2;varbuffer[icheck];icheck++) {
+							if (varbuffer[icheck]>='0' && varbuffer[icheck]<='7') continue;
+							rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid octal number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+							MaxError(ae);
+							break;
+						}
+						curval=strtol(varbuffer+minusptr+1,NULL,8);
+						break;
+					}
 					
-                    crc=GetCRC(varbuffer+minusptr);
+                    			crc=GetCRC(varbuffer+minusptr);
 				
 					for (imkey=0;math_keyword[imkey].mnemo[0];imkey++) {
 						if (crc==math_keyword[imkey].crc && strcmp(varbuffer+minusptr,math_keyword[imkey].mnemo)==0) {
@@ -2430,8 +2445,10 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		return 0;
 	}
 
-	/* Execution des instructions */
-	if (ae->maxam) {
+	/* Execute stack */
+	if (ae->maxam || ae->as80) {
+		int workinterval;
+		if (ae->as80) workinterval=0xFFFFFFFF; else workinterval=0xFFFF;
 		for (i=0;i<nboperation;i++) {
 
 #if 0
@@ -2449,14 +2466,14 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					}
 					accu[paccu]=operation[i].data_static;paccu++;
 					break;
-				case E_COMPUTE_OPERATION_ADD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]+(int)accu[paccu-1])&0xFFFF;paccu--;break;
-				case E_COMPUTE_OPERATION_SUB:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]-(int)accu[paccu-1])&0xFFFF;paccu--;break;
-				case E_COMPUTE_OPERATION_MUL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]*(int)accu[paccu-1])&0xFFFF;paccu--;break;
-				case E_COMPUTE_OPERATION_DIV:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]/(int)accu[paccu-1])&0xFFFF;paccu--;break;
-				case E_COMPUTE_OPERATION_AND:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&(int)accu[paccu-1])&0xFFFF;paccu--;break;
-				case E_COMPUTE_OPERATION_OR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]|(int)accu[paccu-1])&0xFFFF;paccu--;break;
-				case E_COMPUTE_OPERATION_XOR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]^(int)accu[paccu-1])&0xFFFF;paccu--;break;
-				case E_COMPUTE_OPERATION_MOD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]%(int)accu[paccu-1])&0xFFFF;paccu--;break;
+				case E_COMPUTE_OPERATION_ADD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]+(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_SUB:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]-(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_MUL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]*(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_DIV:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]/(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_AND:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_OR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]|(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_XOR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]^(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_MOD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]%(int)accu[paccu-1])&workinterval;paccu--;break;
 				case E_COMPUTE_OPERATION_SHL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2])<<((int)accu[paccu-1]);paccu--;break;
 				case E_COMPUTE_OPERATION_SHR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2])>>((int)accu[paccu-1]);paccu--;break;				
 				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=(int)sin(accu[paccu-1]*3.1415926545/180.0);break;
@@ -2464,13 +2481,15 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=(int)asin(accu[paccu-1])*180.0/3.1415926545;break;
 				case E_COMPUTE_OPERATION_ACOS:if (paccu>0) accu[paccu-1]=(int)acos(accu[paccu-1])*180.0/3.1415926545;break;
 				case E_COMPUTE_OPERATION_ATAN:if (paccu>0) accu[paccu-1]=(int)atan(accu[paccu-1])*180.0/3.1415926545;break;
+				case E_COMPUTE_OPERATION_LOW:if (paccu>0) accu[paccu-1]=((int)accu[paccu-1])&0xFF;break;
+				case E_COMPUTE_OPERATION_HIGH:if (paccu>0) accu[paccu-1]=(((int)accu[paccu-1])&0xFF00)>>8;break;
 				case E_COMPUTE_OPERATION_INT:break;
-				case E_COMPUTE_OPERATION_FLOOR:if (paccu>0) accu[paccu-1]=(int)floor(accu[paccu-1])&0xFFFF;break;
-				case E_COMPUTE_OPERATION_ABS:if (paccu>0) accu[paccu-1]=(int)fabs(accu[paccu-1])&0xFFFF;break;
-				case E_COMPUTE_OPERATION_EXP:if (paccu>0) accu[paccu-1]=(int)exp(accu[paccu-1])&0xFFFF;break;
-				case E_COMPUTE_OPERATION_LN:if (paccu>0) accu[paccu-1]=(int)log(accu[paccu-1])&0xFFFF;break;
-				case E_COMPUTE_OPERATION_LOG10:if (paccu>0) accu[paccu-1]=(int)log10(accu[paccu-1])&0xFFFF;break;
-				case E_COMPUTE_OPERATION_SQRT:if (paccu>0) accu[paccu-1]=(int)sqrt(accu[paccu-1])&0xFFFF;break;
+				case E_COMPUTE_OPERATION_FLOOR:if (paccu>0) accu[paccu-1]=(int)floor(accu[paccu-1])&workinterval;break;
+				case E_COMPUTE_OPERATION_ABS:if (paccu>0) accu[paccu-1]=(int)fabs(accu[paccu-1])&workinterval;break;
+				case E_COMPUTE_OPERATION_EXP:if (paccu>0) accu[paccu-1]=(int)exp(accu[paccu-1])&workinterval;break;
+				case E_COMPUTE_OPERATION_LN:if (paccu>0) accu[paccu-1]=(int)log(accu[paccu-1])&workinterval;break;
+				case E_COMPUTE_OPERATION_LOG10:if (paccu>0) accu[paccu-1]=(int)log10(accu[paccu-1])&workinterval;break;
+				case E_COMPUTE_OPERATION_SQRT:if (paccu>0) accu[paccu-1]=(int)sqrt(accu[paccu-1])&workinterval;break;
 				default:rasm_printf(ae,"invalid computing state! (%d)",operation[i].operation_type);
 			}
 			if (!paccu) {
@@ -2511,6 +2530,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_ACOS:if (paccu>0) accu[paccu-1]=acos(accu[paccu-1])*180.0/3.1415926545;break;
 				case E_COMPUTE_OPERATION_ATAN:if (paccu>0) accu[paccu-1]=atan(accu[paccu-1])*180.0/3.1415926545;break;
 				case E_COMPUTE_OPERATION_INT:if (paccu>0) accu[paccu-1]=floor(accu[paccu-1]+0.5);break;
+				case E_COMPUTE_OPERATION_LOW:if (paccu>0) accu[paccu-1]=((int)floor(accu[paccu-1]+0.5))&0xFF;break;
+				case E_COMPUTE_OPERATION_HIGH:if (paccu>0) accu[paccu-1]=(((int)floor(accu[paccu-1]+0.5))&0xFF00)>>8;break;
 				case E_COMPUTE_OPERATION_FLOOR:if (paccu>0) accu[paccu-1]=floor(accu[paccu-1]);break;
 				case E_COMPUTE_OPERATION_ABS:if (paccu>0) accu[paccu-1]=fabs(accu[paccu-1]);break;
 				case E_COMPUTE_OPERATION_EXP:if (paccu>0) accu[paccu-1]=exp(accu[paccu-1]);break;
@@ -6197,7 +6218,6 @@ void _STR(struct s_assenv *ae) {
 
 void _DEFB(struct s_assenv *ae) {
 	int i,tquote;
-
 	if (!ae->wl[ae->idx].t) {
 		do {
 			ae->idx++;
@@ -6237,6 +6257,64 @@ void _DEFI(struct s_assenv *ae) {
 			ae->idx++;
 			PushExpression(ae,ae->idx,E_EXPRESSION_0V32);
 		} while (ae->wl[ae->idx].t==0);
+	} else {
+		rasm_printf(ae,"[%s] Error line %d - DEFI needs one or more parameters\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	}
+}
+
+void _DEFB_as80(struct s_assenv *ae) {
+	int i,tquote;
+	int modadr=0;
+
+	if (!ae->wl[ae->idx].t) {
+		do {
+			ae->idx++;
+			if ((tquote=StringIsQuote(ae->wl[ae->idx].w))!=0) {
+				i=1;
+				while (ae->wl[ae->idx].w[i] && ae->wl[ae->idx].w[i]!=tquote) {
+					if (ae->wl[ae->idx].w[i]=='\\') i++;
+					/* charset conversion on the fly */
+					___output(ae,ae->charset[(int)ae->wl[ae->idx].w[i]]);
+					ae->codeadr--;modadr++;
+					i++;
+				}
+			} else {
+				PushExpression(ae,ae->idx,E_EXPRESSION_0V8);
+				ae->codeadr--;modadr++;
+			}
+		} while (ae->wl[ae->idx].t==0);
+		ae->codeadr+=modadr;
+	} else {
+		rasm_printf(ae,"[%s] Error line %d - DEFB needs one or more parameters\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	}
+}
+
+void _DEFW_as80(struct s_assenv *ae) {
+	int modadr=0;
+	if (!ae->wl[ae->idx].t) {
+		do {
+			ae->idx++;
+			PushExpression(ae,ae->idx,E_EXPRESSION_0V16);
+			ae->codeadr-=2;modadr+=2;
+		} while (ae->wl[ae->idx].t==0);
+		ae->codeadr+=modadr;
+	} else {
+		rasm_printf(ae,"[%s] Error line %d - DEFW needs one or more parameters\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	}
+}
+
+void _DEFI_as80(struct s_assenv *ae) {
+	int modadr=0;
+	if (!ae->wl[ae->idx].t) {
+		do {
+			ae->idx++;
+			PushExpression(ae,ae->idx,E_EXPRESSION_0V32);
+			ae->codeadr-=4;modadr+=4;
+		} while (ae->wl[ae->idx].t==0);
+		ae->codeadr+=modadr;
 	} else {
 		rasm_printf(ae,"[%s] Error line %d - DEFI needs one or more parameters\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
@@ -6733,11 +6811,16 @@ void __MACRO(struct s_assenv *ae) {
 			if (getparam) {
 				/* on prepare les parametres au remplacement */
 				zeparam=MemMalloc(strlen(ae->wl[idx].w)+3);
-				sprintf(zeparam,"{%s}",ae->wl[idx].w);
+				if (ae->as80) {
+					sprintf(zeparam,"%s",ae->wl[idx].w);
+				} else {
+					sprintf(zeparam,"{%s}",ae->wl[idx].w);
+				}
 				curmacro.nbparam++;
 				curmacro.param=MemRealloc(curmacro.param,curmacro.nbparam*sizeof(char **));
 				curmacro.param[curmacro.nbparam-1]=zeparam;
 				if (ae->wl[idx].t) {
+					/* duplicate parameters without brackets MUST be an OPTION */
 					getparam=0;
 				}
 			} else {
@@ -7787,7 +7870,9 @@ void __SAVE(struct s_assenv *ae) {
 								if (!ae->wl[ae->idx+5].t) {
 									/* face selection - 0 as default */
 									switch (ae->wl[ae->idx+6].w[0]) {
-										cursave.face=1;
+										case '1':
+										case 'B':
+											cursave.face=1;
 											break;
 										case '0':
 										case 'A':
@@ -8040,6 +8125,18 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	/* compute CRC for keywords and directives */
 	for (icrc=0;instruction[icrc].mnemo[0];icrc++) instruction[icrc].crc=GetCRC(instruction[icrc].mnemo);
 	for (icrc=0;math_keyword[icrc].mnemo[0];icrc++) math_keyword[icrc].crc=GetCRC(math_keyword[icrc].mnemo);
+
+	if (ae->as80) {
+		for (icrc=0;instruction[icrc].mnemo[0];icrc++) {
+			if (strcmp(instruction[icrc].mnemo,"DEFB")==0 || strcmp(instruction[icrc].mnemo,"DB")==0) {
+				instruction[icrc].makemnemo=_DEFB_as80;
+			} else if (strcmp(instruction[icrc].mnemo,"DEFW")==0 || strcmp(instruction[icrc].mnemo,"DW")==0) {
+				instruction[icrc].makemnemo=_DEFW_as80;
+			} else if (strcmp(instruction[icrc].mnemo,"DEFI")==0) {
+				instruction[icrc].makemnemo=_DEFI_as80;
+			}
+		}
+	}
 
 	/* Execution des mots clefs */
 	/**********************************************************
@@ -9021,7 +9118,7 @@ int cmpkeyword(const void * a, const void * b)
 	return strcmp(sa->mnemo,sb->mnemo);
 }
 
-struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int datalen, int verbose, char *outputfilename, char **labelfilename)
+struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int datalen, int verbose, char *outputfilename, char **labelfilename, int as80)
 {
 	#undef FUNC
 	#define FUNC "PreProcessing"
@@ -9273,7 +9370,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 			l++;
 			idx=0;
 			continue;
-		} else if (c=='>' && listing[l].listing[idx]=='<' && !quote_type) {
+		} else if (c=='>' && listing[l].listing[idx]=='>' && !quote_type) {
 			listing[l].listing[idx-1]=']';
 			listing[l].listing[idx++]=' ';
 			continue;
@@ -9775,6 +9872,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 										if (strcmp(instruction[ifast].mnemo,curw.w)==0) {
 											keymatched=1;														
 											if (strcmp(curw.w,"MACRO")==0 || strcmp(curw.w,"WRITE")==0) {
+/* @@TODO AS80 compatibility patch!!! */
 												macro_trigger=1;
 											} else {
 												Automate[' ']=1;
@@ -9948,6 +10046,17 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 
 	if (ae->verbose & 7) rasm_printf(ae,"wordlist contains %d element%s\n",nbword,nbword>1?"s":"");
 	ae->nbword=nbword;
+
+	if (as80) {
+		for (l=0;l<nbword;l++) {
+			if (!wordlist[l].t && !wordlist[l].e && strcmp(wordlist[l+1].w,"MACRO")==0) {
+				char *wtmp;
+				wtmp=wordlist[l+1].w;
+				wordlist[l+1].w=wordlist[l].w;
+				wordlist[l].w=wtmp;
+			}
+		}
+	}
 	
 	if (ae->verbose==2) {
 		for (l=0;l<nbword;l++) {
@@ -9974,7 +10083,8 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 
 void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, float rough, int export_local, char **labelfilename,
 	 int export_var, int export_equ, char *symbol_name, char *binary_name, char *cartridge_name, char *snapshot_name,
-	 int export_sna, int checkmode, int export_snabrk, int maxerr, char *breakpoint_name, int export_brk, int edskoverwrite)
+	 int export_sna, int checkmode, int export_snabrk, int maxerr, char *breakpoint_name, int export_brk, int edskoverwrite,
+	 int as80)
 {
 	#undef FUNC
 	#define FUNC "Rasm"
@@ -9982,7 +10092,7 @@ void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, flo
 	struct s_assenv *ae=NULL;
 
 	/* read and preprocess source */
-	ae=PreProcessing(filename,0,NULL,0,verbose,outputfilename,labelfilename);
+	ae=PreProcessing(filename,0,NULL,0,verbose,outputfilename,labelfilename,as80);
 	ae->export_local=export_local;
 	ae->export_sym=export_sym;
 	ae->export_var=export_var;
@@ -9992,6 +10102,7 @@ void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, flo
 	ae->export_brk=export_brk;
 	ae->edskoverwrite=edskoverwrite;
 	ae->rough=rough;
+	ae->as80=as80;
 	ae->maxerr=maxerr;
 	ae->breakpoint_name=breakpoint_name;
 	ae->symbol_name=symbol_name;
@@ -10010,7 +10121,7 @@ int RasmAssemble(const char *datain, int lenin, unsigned char **dataout, int *le
 {
 	struct s_assenv *ae=NULL;
 	
-	ae=PreProcessing(NULL,1,datain,lenin,0x0,NULL,NULL);
+	ae=PreProcessing(NULL,1,datain,lenin,0x0,NULL,NULL,0);
 	return Assemble(ae,dataout,lenout);
 }
 
@@ -10455,7 +10566,8 @@ void Usage(int help)
 		printf("-sq export also EQU symbol\n");
 		printf("-sa export all symbols (like -sl -sv -sq option)\n");
 		printf("COMPATIBILITY:\n");
-		printf("-m  maxam style calculations\n");
+		printf("-m   maxam style calculations\n");
+		printf("-ass AS80 behaviour mimic (see doc)\n");
 		printf("BANKING:\n");
 		printf("-c  cartridge/snapshot summary\n");
 		printf("EDSK generation/update:\n");
@@ -10614,7 +10726,7 @@ printf("\n\n");
 int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough, int *export_local,
 	 char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name,
 	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk,
-	 int *edskoverwrite)
+	 int *edskoverwrite, int *as80)
 {
 	#undef FUNC
 	#define FUNC "ParseOptions"
@@ -10623,6 +10735,8 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 
 	if (strcmp(argv[i],"-autotest")==0) {
 		RasmAutotest();
+	} else if (strcmp(argv[i],"-ass")==0) {
+		*as80=1;
 	} else if (strcmp(argv[i],"-eb")==0) {
 		*export_brk=1;
 	} else if (strcmp(argv[i],"-eo")==0) {
@@ -10778,7 +10892,7 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough,
 	 int *export_local, char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name,
 	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk,
-	 int *edskoverwrite)
+	 int *edskoverwrite, int *as80)
 {
 	#undef FUNC
 	#define FUNC "GetParametersFromCommandLine"
@@ -10787,7 +10901,7 @@ void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *e
 	for (i=1;i<argc;i++)
 		i+=ParseOptions(&argv[i],argc-i,filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,
 			export_var,export_equ,symbol_name,binary_name,cartridge_name,snapshot_name,export_sna,checkmode,
-			export_snabrk,maxerr,breakpoint_name,export_brk,edskoverwrite);
+			export_snabrk,maxerr,breakpoint_name,export_brk,edskoverwrite,as80);
 
 	if (!*filename) Usage(0);
 	if (*export_local && !*export_sym) Usage(1); // à revoir?
@@ -10821,6 +10935,7 @@ int main(int argc, char **argv)
 	int maxerr=20;
 	int edskoverwrite=0;
 	float rough=0.5;
+	int as80=0;
 	char *symbol_name=NULL;
 	char *binary_name=NULL;
 	char *cartridge_name=NULL;
@@ -10829,10 +10944,10 @@ int main(int argc, char **argv)
 
 	GetParametersFromCommandLine(argc,argv,&filename,&export_sym,&verbose,&outputfilename,&rough,&export_local,&labelfilename,
 		&export_var,&export_equ,&symbol_name,&binary_name,&cartridge_name,&snapshot_name,&export_sna,&checkmode,&export_snabrk,
-		&maxerr,&breakpoint_name,&export_brk,&edskoverwrite);
+		&maxerr,&breakpoint_name,&export_brk,&edskoverwrite,&as80);
 	Rasm(filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,export_var,export_equ,symbol_name,
 		binary_name,cartridge_name,snapshot_name,export_sna,checkmode,export_snabrk,maxerr,breakpoint_name,export_brk,
-		edskoverwrite);
+		edskoverwrite,as80);
 	#ifdef RDD
 	/* private dev lib tools */
 	CloseLibrary();

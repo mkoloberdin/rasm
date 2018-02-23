@@ -1,3 +1,12 @@
+update v0.71
+- math functions HI & LO to get high 8 bits or low 8 bits of a pseudo 16 bits value
+- @ prefix for octal values
+- AS80 assembler compatibility mode (enough to compile CNG player)
+
+update v0.70
+- shifting operator >> bugfix
+- EDSK face selection bugfix
+
 update v0.69
 - added $ prefix for hex values
 - added 0xb prefix for binary values
