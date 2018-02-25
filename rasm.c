@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.71"
+#define PROGRAM_VERSION   "0.72"
 #define PROGRAM_DATE      "xx/02/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -6340,6 +6340,10 @@ void __AMSDOS(struct s_assenv *ae) {
 }
 
 void __BUILDCPR(struct s_assenv *ae) {
+	if (!ae->wl[ae->idx].t) {
+		rasm_printf(ae,"[%s] Error line %d - BUILDCPR does not need a parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		exit(-771);
+	}
 	if (!ae->forcesnapshot) {
 		ae->forcecpr=1;
 	} else {
@@ -6348,6 +6352,12 @@ void __BUILDCPR(struct s_assenv *ae) {
 	}
 }
 void __BUILDSNA(struct s_assenv *ae) {
+	if (!ae->wl[ae->idx].t && strcmp(ae->wl[ae->idx+1].w,"V2")==0) {
+		ae->snapshot.version=2;
+	} else {
+		rasm_printf(ae,"[%s] Error line %d - BUILDSNA unrecognized option\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	}
 	if (!ae->forcecpr) {
 		ae->forcesnapshot=1;
 	} else {
@@ -6355,8 +6365,7 @@ void __BUILDSNA(struct s_assenv *ae) {
 		exit(-772);
 	}
 }
-
-
+	
 
 void __LZ4(struct s_assenv *ae) {
 	struct s_lz_section curlz;
@@ -8492,6 +8501,10 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				int do_it=1;
 				int bankset;
 
+				if (ae->snapshot.version==2 && ae->snapshot.CPCType>2) {
+					rasm_printf(ae,"[%s] Warning line %d - V2 snapshot cannot select a Plus model (forced to 6128)\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+					ae->snapshot.CPCType=2; /* 6128 */
+				}
 				
 				if (ae->snapshot_name) {
 					sprintf(TMP_filename,"%s",ae->snapshot_name);
@@ -8500,13 +8513,20 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				}
 				FileRemoveIfExists(TMP_filename);
 				
-				rasm_printf(ae,"Write snapshot file %s\n",TMP_filename);
+				rasm_printf(ae,"Write snapshot v%d file %s\n",ae->snapshot.version,TMP_filename);
 				for (i=maxrom=0;i<ae->io;i++) {
 					if (ae->orgzone[i].ibank<36 && ae->orgzone[i].ibank>maxrom && ae->orgzone[i].memstart!=ae->orgzone[i].memend) {
 						maxrom=ae->orgzone[i].ibank;
 					}
 				}
 				/* construction du SNA */
+				if (ae->snapshot.version==2) {
+					if (maxrom>4) {
+						ae->snapshot.dumpsize[0]=128;
+					} else {
+						ae->snapshot.dumpsize[0]=64;
+					}
+				}
 				
 				/* header */
 				FileWriteBinary(TMP_filename,(char *)&ae->snapshot,0x100);
@@ -8569,174 +8589,190 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 							
 						}
 					}
-					/* compression par défaut avec snapshot v3 */
-					rlebank=EncodeSnapshotRLE(packed,&ChunkSize);
-					sprintf(ChunkName,"MEM%d",bankset);
-					FileWriteBinary(TMP_filename,ChunkName,4);
-					if (rlebank!=NULL) {
-						FileWriteBinary(TMP_filename,(char*)&ChunkSize,4);
-						FileWriteBinary(TMP_filename,(char*)rlebank,ChunkSize);
-						MemFree(rlebank);
+					
+					if (ae->snapshot.version==2) {
+						/* snapshot v2 */
+						FileWriteBinary(TMP_filename,(char*)&packed,65536);
+						if (bankset) {
+							/* v2 snapshot is 128K maximum */
+							maxrom=7;
+							break;
+						}
 					} else {
-						ChunkSize=65536;
-						FileWriteBinary(TMP_filename,(char*)&packed,ChunkSize);
+						/* compression par défaut avec snapshot v3 */
+						rlebank=EncodeSnapshotRLE(packed,&ChunkSize);
+						sprintf(ChunkName,"MEM%d",bankset);
+						FileWriteBinary(TMP_filename,ChunkName,4);
+						if (rlebank!=NULL) {
+							FileWriteBinary(TMP_filename,(char*)&ChunkSize,4);
+							FileWriteBinary(TMP_filename,(char*)rlebank,ChunkSize);
+							MemFree(rlebank);
+						} else {
+							ChunkSize=65536;
+							FileWriteBinary(TMP_filename,(char*)&packed,ChunkSize);
+						}
 					}
 				}
 
-				/* export breakpoint */
-				if (ae->export_snabrk) {
-					/* BRKS chunk for Winape emulator (unofficial) 
-					
-					2 bytes - adress
-					1 byte  - 0=base 64K / 1=extended
-					2 bytes - condition (zeroed)
-					*/
-					struct s_breakpoint breakpoint={0};
-					unsigned char *brkschunk=NULL;
-					unsigned int idx=8;
-					
-					/* add labels and local labels to breakpoint pool (if any) */
-					for (i=0;i<ae->il;i++) {
-						if (!ae->label[i].name) {
-							if (strncmp(ae->wl[ae->label[i].iw].w,"BRK",3)==0) {
-								breakpoint.address=ae->label[i].ptr;
-								if (ae->label[i].ibank>3) breakpoint.bank=1; else breakpoint.bank=0;
-								ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));
-							}
-						} else {
-							if (strncmp(ae->label[i].name,"@BRK",4)==0) {
-								breakpoint.address=ae->label[i].ptr;
-								if (ae->label[i].ibank>3) breakpoint.bank=1; else breakpoint.bank=0;
-								ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));								
+				/**************************************************************
+				            snapshot additionnal chunks in v3+ only
+				**************************************************************/
+				if (ae->snapshot.version>=3) {
+					/* export breakpoint */
+					if (ae->export_snabrk) {
+						/* BRKS chunk for Winape emulator (unofficial) 
+						
+						2 bytes - adress
+						1 byte  - 0=base 64K / 1=extended
+						2 bytes - condition (zeroed)
+						*/
+						struct s_breakpoint breakpoint={0};
+						unsigned char *brkschunk=NULL;
+						unsigned int idx=8;
+						
+						/* add labels and local labels to breakpoint pool (if any) */
+						for (i=0;i<ae->il;i++) {
+							if (!ae->label[i].name) {
+								if (strncmp(ae->wl[ae->label[i].iw].w,"BRK",3)==0) {
+									breakpoint.address=ae->label[i].ptr;
+									if (ae->label[i].ibank>3) breakpoint.bank=1; else breakpoint.bank=0;
+									ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));
+								}
+							} else {
+								if (strncmp(ae->label[i].name,"@BRK",4)==0) {
+									breakpoint.address=ae->label[i].ptr;
+									if (ae->label[i].ibank>3) breakpoint.bank=1; else breakpoint.bank=0;
+									ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));								
+								}
 							}
 						}
-					}
 
-					brkschunk=MemMalloc(ae->ibreakpoint*5+8);
-					strcpy(brkschunk,"BRKS");
-					
-					for (i=0;i<ae->ibreakpoint;i++) {
-						brkschunk[idx++]=ae->breakpoint[i].address&0xFF;
-						brkschunk[idx++]=(ae->breakpoint[i].address&0xFF00)/256;
-						brkschunk[idx++]=ae->breakpoint[i].bank;
-						brkschunk[idx++]=0;
-						brkschunk[idx++]=0;
-					}
-
-					idx-=8;
-					brkschunk[4]=idx&0xFF;
-					brkschunk[5]=(idx>>8)&0xFF;
-					brkschunk[6]=(idx>>16)&0xFF;
-					brkschunk[7]=(idx>>24)&0xFF;
-					FileWriteBinary(TMP_filename,(char*)brkschunk,idx+8); // 8 bytes for the chunk header
-					MemFree(brkschunk);
-
-
-					/* BRKC chunk for ACE emulator 
-					minimal integration
-					*/
-					brkschunk=MemMalloc(ae->ibreakpoint*256);
-					strcpy(brkschunk,"BRKC");
-					idx=8;
-					
-					for (i=0;i<ae->ibreakpoint;i++) {
-						brkschunk[idx++]=0; /* 0:Execution */
-						brkschunk[idx++]=0;
-						brkschunk[idx++]=0;
-						brkschunk[idx++]=0;
-						brkschunk[idx++]=ae->breakpoint[i].address&0xFF;
-						brkschunk[idx++]=(ae->breakpoint[i].address&0xFF00)/256;
-						for (j=0;j<2+1+1+2+4+128;j++) {
+						brkschunk=MemMalloc(ae->ibreakpoint*5+8);
+						strcpy(brkschunk,"BRKS");
+						
+						for (i=0;i<ae->ibreakpoint;i++) {
+							brkschunk[idx++]=ae->breakpoint[i].address&0xFF;
+							brkschunk[idx++]=(ae->breakpoint[i].address&0xFF00)/256;
+							brkschunk[idx++]=ae->breakpoint[i].bank;
+							brkschunk[idx++]=0;
 							brkschunk[idx++]=0;
 						}
-						sprintf(brkschunk+idx,"breakpoint%d",i); /* breakpoint user name? */
-						idx+=64+8;
+
+						idx-=8;
+						brkschunk[4]=idx&0xFF;
+						brkschunk[5]=(idx>>8)&0xFF;
+						brkschunk[6]=(idx>>16)&0xFF;
+						brkschunk[7]=(idx>>24)&0xFF;
+						FileWriteBinary(TMP_filename,(char*)brkschunk,idx+8); // 8 bytes for the chunk header
+						MemFree(brkschunk);
+
+
+						/* BRKC chunk for ACE emulator 
+						minimal integration
+						*/
+						brkschunk=MemMalloc(ae->ibreakpoint*256);
+						strcpy(brkschunk,"BRKC");
+						idx=8;
+						
+						for (i=0;i<ae->ibreakpoint;i++) {
+							brkschunk[idx++]=0; /* 0:Execution */
+							brkschunk[idx++]=0;
+							brkschunk[idx++]=0;
+							brkschunk[idx++]=0;
+							brkschunk[idx++]=ae->breakpoint[i].address&0xFF;
+							brkschunk[idx++]=(ae->breakpoint[i].address&0xFF00)/256;
+							for (j=0;j<2+1+1+2+4+128;j++) {
+								brkschunk[idx++]=0;
+							}
+							sprintf(brkschunk+idx,"breakpoint%d",i); /* breakpoint user name? */
+							idx+=64+8;
+						}
+						idx-=8;
+						brkschunk[4]=idx&0xFF;
+						brkschunk[5]=(idx>>8)&0xFF;
+						brkschunk[6]=(idx>>16)&0xFF;
+						brkschunk[7]=(idx>>24)&0xFF;
+						FileWriteBinary(TMP_filename,(char*)brkschunk,idx+8); // 8 bytes for the chunk header
+						MemFree(brkschunk);
 					}
-					idx-=8;
-					brkschunk[4]=idx&0xFF;
-					brkschunk[5]=(idx>>8)&0xFF;
-					brkschunk[6]=(idx>>16)&0xFF;
-					brkschunk[7]=(idx>>24)&0xFF;
-					FileWriteBinary(TMP_filename,(char*)brkschunk,idx+8); // 8 bytes for the chunk header
-					MemFree(brkschunk);
-				}
-				/* export optionnel des symboles */
-				if (ae->export_sna) {
-					/* SYMB chunk for ACE emulator
+					/* export optionnel des symboles */
+					if (ae->export_sna) {
+						/* SYMB chunk for ACE emulator
 
-					1 byte  - name size
-					n bytes - name (without 0 to end the string)
-					6 bytes - reserved for future use
-					2 bytes - shitty big endian adress for the symbol
-					*/
-				
-					unsigned char *symbchunk=NULL;
-					unsigned int idx=8;
-					int symbol_len;
+						1 byte  - name size
+						n bytes - name (without 0 to end the string)
+						6 bytes - reserved for future use
+						2 bytes - shitty big endian adress for the symbol
+						*/
+					
+						unsigned char *symbchunk=NULL;
+						unsigned int idx=8;
+						int symbol_len;
 
-					symbchunk=MemMalloc(8+ae->il*(1+255+6+2));
-					strcpy(symbchunk,"SYMB");
+						symbchunk=MemMalloc(8+ae->il*(1+255+6+2));
+						strcpy(symbchunk,"SYMB");
 
-					for (i=0;i<ae->il;i++) {
-						if (!ae->label[i].name) {
-							symbol_len=strlen(ae->wl[ae->label[i].iw].w);
-							if (symbol_len>255) symbol_len=255;
-							symbchunk[idx++]=symbol_len;
-							memcpy(symbchunk+idx,ae->wl[ae->label[i].iw].w,symbol_len);
-							idx+=symbol_len;
-							memset(symbchunk+idx,0,6);
-							idx+=6;
-							symbchunk[idx++]=(ae->label[i].ptr&0xFF00)/256;
-							symbchunk[idx++]=ae->label[i].ptr&0xFF;
-						} else {
-							if (ae->export_local) {
-								symbol_len=strlen(ae->label[i].name);
+						for (i=0;i<ae->il;i++) {
+							if (!ae->label[i].name) {
+								symbol_len=strlen(ae->wl[ae->label[i].iw].w);
 								if (symbol_len>255) symbol_len=255;
 								symbchunk[idx++]=symbol_len;
-								memcpy(symbchunk+idx,ae->label[i].name,symbol_len);
+								memcpy(symbchunk+idx,ae->wl[ae->label[i].iw].w,symbol_len);
 								idx+=symbol_len;
 								memset(symbchunk+idx,0,6);
 								idx+=6;
 								symbchunk[idx++]=(ae->label[i].ptr&0xFF00)/256;
 								symbchunk[idx++]=ae->label[i].ptr&0xFF;
+							} else {
+								if (ae->export_local) {
+									symbol_len=strlen(ae->label[i].name);
+									if (symbol_len>255) symbol_len=255;
+									symbchunk[idx++]=symbol_len;
+									memcpy(symbchunk+idx,ae->label[i].name,symbol_len);
+									idx+=symbol_len;
+									memset(symbchunk+idx,0,6);
+									idx+=6;
+									symbchunk[idx++]=(ae->label[i].ptr&0xFF00)/256;
+									symbchunk[idx++]=ae->label[i].ptr&0xFF;
+								}
 							}
 						}
-					}
-					if (ae->export_var) {
-						unsigned char *subchunk=NULL;
-						int retidx=0;
-						/* var are part of fast tree search structure */
-						subchunk=SnapshotDicoTree(ae,&retidx);
-						if (retidx) {
-							symbchunk=MemRealloc(symbchunk,idx+retidx);
-							memcpy(symbchunk+idx,subchunk,retidx);
-							idx+=retidx;
-							SnapshotDicoInsert("FREE",0,&retidx);
+						if (ae->export_var) {
+							unsigned char *subchunk=NULL;
+							int retidx=0;
+							/* var are part of fast tree search structure */
+							subchunk=SnapshotDicoTree(ae,&retidx);
+							if (retidx) {
+								symbchunk=MemRealloc(symbchunk,idx+retidx);
+								memcpy(symbchunk+idx,subchunk,retidx);
+								idx+=retidx;
+								SnapshotDicoInsert("FREE",0,&retidx);
+							}
 						}
-					}
-					if (ae->export_equ) {
-						symbchunk=MemRealloc(symbchunk,idx+ae->ialias*(1+255+6+2));
+						if (ae->export_equ) {
+							symbchunk=MemRealloc(symbchunk,idx+ae->ialias*(1+255+6+2));
 
-						for (i=0;i<ae->ialias;i++) {
-							int tmpptr;
-							symbol_len=strlen(ae->alias[i].alias);
-							if (symbol_len>255) symbol_len=255;
-							symbchunk[idx++]=symbol_len;
-							memcpy(symbchunk+idx,ae->alias[i].alias,symbol_len);
-							idx+=symbol_len;
-							memset(symbchunk+idx,0,6);
-							idx+=6;
-							tmpptr=RoundComputeExpression(ae,ae->alias[i].translation,0,0,0);
-							symbchunk[idx++]=(tmpptr&0xFF00)/256;
-							symbchunk[idx++]=tmpptr&0xFF;
+							for (i=0;i<ae->ialias;i++) {
+								int tmpptr;
+								symbol_len=strlen(ae->alias[i].alias);
+								if (symbol_len>255) symbol_len=255;
+								symbchunk[idx++]=symbol_len;
+								memcpy(symbchunk+idx,ae->alias[i].alias,symbol_len);
+								idx+=symbol_len;
+								memset(symbchunk+idx,0,6);
+								idx+=6;
+								tmpptr=RoundComputeExpression(ae,ae->alias[i].translation,0,0,0);
+								symbchunk[idx++]=(tmpptr&0xFF00)/256;
+								symbchunk[idx++]=tmpptr&0xFF;
+							}
 						}
+						idx-=8;
+						symbchunk[4]=idx&0xFF;
+						symbchunk[5]=(idx>>8)&0xFF;
+						symbchunk[6]=(idx>>16)&0xFF;
+						symbchunk[7]=(idx>>24)&0xFF;
+						FileWriteBinary(TMP_filename,(char*)symbchunk,idx+8); // 8 bytes for the chunk header
 					}
-					idx-=8;
-					symbchunk[4]=idx&0xFF;
-					symbchunk[5]=(idx>>8)&0xFF;
-					symbchunk[6]=(idx>>16)&0xFF;
-					symbchunk[7]=(idx>>24)&0xFF;
-					FileWriteBinary(TMP_filename,(char*)symbchunk,idx+8); // 8 bytes for the chunk header
 				}
 
 				FileWriteBinaryClose(TMP_filename);
@@ -9233,10 +9269,26 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	memcpy(ae->snapshot.idmark,"MV - SNA",8);
 	ae->snapshot.version=3;
 	ae->snapshot.registers.IM=1;
-	for (i=0;i<17;i++) ae->snapshot.gatearray.palette[i]=0x04;
+
+	ae->snapshot.gatearray.palette[0]=0x04;
 	ae->snapshot.gatearray.palette[1]=0x0A;
-	;
-	ae->snapshot.gatearray.multiconfiguration=0x8D; // lower/upper ROM off
+	ae->snapshot.gatearray.palette[2]=0x15;
+	ae->snapshot.gatearray.palette[3]=0x1C;
+	ae->snapshot.gatearray.palette[4]=0x18;
+	ae->snapshot.gatearray.palette[5]=0x1D;
+	ae->snapshot.gatearray.palette[6]=0x0C;
+	ae->snapshot.gatearray.palette[7]=0x05;
+	ae->snapshot.gatearray.palette[8]=0x0D;
+	ae->snapshot.gatearray.palette[9]=0x16;
+	ae->snapshot.gatearray.palette[10]=0x06;
+	ae->snapshot.gatearray.palette[11]=0x17;
+	ae->snapshot.gatearray.palette[12]=0x1E;
+	ae->snapshot.gatearray.palette[13]=0x00;
+	ae->snapshot.gatearray.palette[14]=0x1F;
+	ae->snapshot.gatearray.palette[15]=0x0E;
+	ae->snapshot.gatearray.palette[16]=0x04;
+
+	ae->snapshot.gatearray.multiconfiguration=0x8D; // lower/upper ROM off + mode 1
 	ae->snapshot.CPCType=2; /* 6128 */
 	ae->snapshot.crtcstate.model=0; /* CRTC 0 */
 	ae->snapshot.vsyncdelay=2;
@@ -9252,6 +9304,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	ae->snapshot.crtc.registervalue[9]=7;
 	ae->snapshot.crtc.registervalue[12]=0x30;
 	ae->snapshot.psg.registervalue[7]=0x3F; /* audio mix all channels OFF */
+	ae->snapshot.registers.HSP=0xC0;
 
 	/*
 		winape		sprintf(symbol_line,"%s #%4X\n",ae->label[i].name,ae->label[i].ptr);
