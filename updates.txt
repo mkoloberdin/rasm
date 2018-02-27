@@ -1,3 +1,7 @@
+update v0.73
+- bugfix in snapshot directive
+- bugfix in snapshot when using distinct bank instead of banksets
+
 update v0.72
 - ability to generate v2 snapshot for M4Wifi
 

@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.72"
+#define PROGRAM_VERSION   "0.73"
 #define PROGRAM_DATE      "xx/02/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -6352,11 +6352,13 @@ void __BUILDCPR(struct s_assenv *ae) {
 	}
 }
 void __BUILDSNA(struct s_assenv *ae) {
-	if (!ae->wl[ae->idx].t && strcmp(ae->wl[ae->idx+1].w,"V2")==0) {
+	if (!ae->wl[ae->idx].t) {
+		if (strcmp(ae->wl[ae->idx+1].w,"V2")==0) {
 		ae->snapshot.version=2;
-	} else {
-		rasm_printf(ae,"[%s] Error line %d - BUILDSNA unrecognized option\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
-		MaxError(ae);
+		} else {
+			rasm_printf(ae,"[%s] Error line %d - BUILDSNA unrecognized option\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			MaxError(ae);
+		}
 	}
 	if (!ae->forcecpr) {
 		ae->forcesnapshot=1;
@@ -8559,9 +8561,9 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 							/* banks are gathered in the 64K block */
 							if (offset>0xC000) {
 								ChunkSize=65536-offset;
-								memcpy(packed+k*16384,(char*)ae->mem[i]+offset,ChunkSize);
+								memcpy(packed+k*16384,(char*)ae->mem[i+k]+offset,ChunkSize);
 							} else {
-								memcpy(packed+k*16384,(char*)ae->mem[i]+offset,16384);
+								memcpy(packed+k*16384,(char*)ae->mem[i+k]+offset,16384);
 							}
 							
 							if (ae->verbose & 8) {
