@@ -1,6 +1,6 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.73"
-#define PROGRAM_DATE      "xx/02/2018"
+#define PROGRAM_VERSION   "0.74"
+#define PROGRAM_DATE      "xx/03/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
 #define RASM_VERSION PROGRAM_NAME" v"PROGRAM_VERSION
@@ -285,6 +285,7 @@ struct s_repeat {
 	int cpt;
 	int value;
 	int maxim;
+	int repeat_counter;
 };
 
 struct s_whilewend {
@@ -292,6 +293,7 @@ struct s_whilewend {
 	int cpt;
 	int value;
 	int maxim;
+	int while_counter;
 };
 
 struct s_wordlist {
@@ -2150,7 +2152,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 						break;
 					}
 					
-                    			crc=GetCRC(varbuffer+minusptr);
+                    crc=GetCRC(varbuffer+minusptr);
 				
 					for (imkey=0;math_keyword[imkey].mnemo[0];imkey++) {
 						if (crc==math_keyword[imkey].crc && strcmp(varbuffer+minusptr,math_keyword[imkey].mnemo)==0) {
@@ -2320,14 +2322,33 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 									ivar=0;
 									continue;
 								} else {
-									/* in case the expression is a register */
-									if (IsRegister(varbuffer+minusptr)) {
-										rasm_printf(ae,"[%s] Error line %d - cannot use register %s in this context\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+									/* last chance to get a keyword */
+									if (strcmp(varbuffer+minusptr,"REPEAT_COUNTER")==0) {
+										if (ae->ir) {
+											curval=ae->repeat[ae->ir-1].repeat_counter;
+										} else {
+											rasm_printf(ae,"[%s] Error line %d - cannot use REPEAT_COUNTER keyword outside a repeat loop\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
+											MaxError(ae);
+											curval=0;
+										}
+									} else if (strcmp(varbuffer+minusptr,"WHILE_COUNTER")==0) {
+										if (ae->iw) {
+											curval=ae->whilewend[ae->iw-1].while_counter;
+										} else {
+											rasm_printf(ae,"[%s] Error line %d - cannot use WHILE_COUNTER keyword outside a while loop\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
+											MaxError(ae);
+											curval=0;
+										}
 									} else {
-										rasm_printf(ae,"[%s] Error line %d - in expression [%s]->[%s] (not found in variables,labels or aliases)\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer+minusptr);
+										/* in case the expression is a register */
+										if (IsRegister(varbuffer+minusptr)) {
+											rasm_printf(ae,"[%s] Error line %d - cannot use register %s in this context\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+										} else {
+											rasm_printf(ae,"[%s] Error line %d - in expression [%s]->[%s] (not found in variables,labels or aliases)\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer+minusptr);
+										}
+										MaxError(ae);
+										curval=0;
 									}
-									MaxError(ae);
-									curval=0;
 								}
 							}
 						}
@@ -2983,6 +3004,60 @@ void ExpressionFastTranslate(struct s_assenv *ae, char **ptr_expr, int fullrepla
 				idx+=dek;
 				MemFree(locallabel);
 				found_replace=1;
+			}
+			if (!found_replace && strcmp(varbuffer,"REPEAT_COUNTER")==0) {
+				if (ae->ir) {
+					yves=ae->repeat[ae->ir-1].repeat_counter;
+					#ifdef OS_WIN
+					snprintf(curval,sizeof(curval)-1,"%d",yves);
+					newlen=strlen(curval);
+					#else
+					newlen=snprintf(curval,sizeof(curval)-1,"%d",yves);
+					#endif
+					lenw=strlen(expr);
+					if (newlen>ivar) {
+						/* realloc bigger */
+						expr=*ptr_expr=MemRealloc(expr,lenw+newlen-ivar+1);
+					}
+					if (newlen!=ivar ) {
+						MemMove(expr+startvar+newlen,expr+startvar+ivar,lenw-startvar-ivar+1);
+						found_replace=1;
+					}
+					strncpy(expr+startvar,curval,newlen); /* copy without zero terminator */
+					found_replace=1;
+					idx=startvar+newlen;
+					ivar=0;
+				} else {
+					rasm_printf(ae,"[%s] FATAL Error line %d - cannot use REPEAT_COUNTER outside repeat loop\n",GetExpFile(ae,0),GetExpLine(ae,0));
+					MaxError(ae);
+				}
+			}
+			if (!found_replace && strcmp(varbuffer,"WHILE_COUNTER")==0) {
+				if (ae->iw) {
+					yves=ae->whilewend[ae->iw-1].while_counter;
+					#ifdef OS_WIN
+					snprintf(curval,sizeof(curval)-1,"%d",yves);
+					newlen=strlen(curval);
+					#else
+					newlen=snprintf(curval,sizeof(curval)-1,"%d",yves);
+					#endif
+					lenw=strlen(expr);
+					if (newlen>ivar) {
+						/* realloc bigger */
+						expr=*ptr_expr=MemRealloc(expr,lenw+newlen-ivar+1);
+					}
+					if (newlen!=ivar ) {
+						MemMove(expr+startvar+newlen,expr+startvar+ivar,lenw-startvar-ivar+1);
+						found_replace=1;
+					}
+					strncpy(expr+startvar,curval,newlen); /* copy without zero terminator */
+					found_replace=1;
+					idx=startvar+newlen;
+					ivar=0;
+				} else {
+					rasm_printf(ae,"[%s] FATAL Error line %d - cannot use WHILE_COUNTER outside repeat loop\n",GetExpFile(ae,0),GetExpLine(ae,0));
+					MaxError(ae);
+				}
 			}
 			ivar=0;
 		}
@@ -6809,6 +6884,11 @@ void __MACRO(struct s_assenv *ae) {
 		if (ae->wl[ae->idx+1].t) {
 			getparam=0;
 		}
+		/* overload forbidden */
+		if (SearchMacro(ae,curmacro.crc,curmacro.mnemo)>=0) {
+			rasm_printf(ae,"[%s] Error line %d - Macro already defined with this name\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			MaxError(ae);
+		}
 		idx=ae->idx+2;
 		while (ae->wl[idx].t!=2 && (GetCRC(ae->wl[idx].w)!=CRC_MEND || strcmp(ae->wl[idx].w,"MEND")!=0) && (GetCRC(ae->wl[idx].w)!=CRC_ENDM || strcmp(ae->wl[idx].w,"ENDM")!=0)) {
 			if (GetCRC(ae->wl[idx].w)==CRC_MACRO || strcmp(ae->wl[idx].w,"MACRO")==0) {
@@ -6995,17 +7075,26 @@ void __RUN(struct s_assenv *ae) {
 void __BREAKPOINT(struct s_assenv *ae) {
 	struct s_breakpoint breakpoint={0};
 	
+	if (ae->activebank>3) breakpoint.bank=1;
 	if (ae->wl[ae->idx].t) {
 		breakpoint.address=ae->codeadr;
-		if (ae->activebank>3) breakpoint.bank=1;
 		ObjectArrayAddDynamicValueConcat((void **)&ae->breakpoint,&ae->ibreakpoint,&ae->maxbreakpoint,&breakpoint,sizeof(struct s_breakpoint));
+	} else 	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
+		breakpoint.address=RoundComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,0);
 	} else {
-		rasm_printf(ae,"[%s] Error line %d - BREAKPOINT does not need parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		rasm_printf(ae,"[%s] Error line %d - syntax is BREAKPOINT [adress]\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
 	}
 }
 void __SETCPC(struct s_assenv *ae) {
 	int mycpc;
+
+	if (!ae->forcecpr) {
+		ae->forcesnapshot=1;
+	} else {
+		rasm_printf(ae,"[%s] Warning line %d - Cannot SETCPC when already in cartridge output\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+	}
+
 	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
 		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 		mycpc=RoundComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,0);
@@ -7030,6 +7119,13 @@ void __SETCPC(struct s_assenv *ae) {
 }
 void __SETCRTC(struct s_assenv *ae) {
 	int mycrtc;
+
+	if (!ae->forcecpr) {
+		ae->forcesnapshot=1;
+	} else {
+		rasm_printf(ae,"[%s] Warning line %d - Cannot SETCRTC when already in cartridge output\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+	}
+
 	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
 		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 		mycrtc=RoundComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,0);
@@ -7211,6 +7307,7 @@ void __WHILE(struct s_assenv *ae) {
 		whilewend.cpt=0;
 		whilewend.value=ae->whilecounter;
 		whilewend.maxim=ae->imacropos;
+		whilewend.while_counter=1;
 		ae->whilecounter++;
 		/* pour gérer les macros situés dans le while précedent après un repeat/while courant */
 		if (ae->iw) whilewend.maxim=ae->whilewend[ae->iw-1].maxim;
@@ -7227,6 +7324,7 @@ void __WEND(struct s_assenv *ae) {
 			ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 			if (ComputeExpression(ae,ae->wl[ae->whilewend[ae->iw-1].start].w,ae->codeadr,0,2)) {
 				ae->whilewend[ae->iw-1].cpt++; /* for local label */
+				ae->whilewend[ae->iw-1].while_counter++;
 				ae->idx=ae->whilewend[ae->iw-1].start;
 				/* refresh macro check index */
 				ae->imacropos=ae->whilewend[ae->iw-1].maxim;
@@ -7316,6 +7414,7 @@ void __REPEAT(struct s_assenv *ae) {
 			}
 			ae->idx++;
 			currepeat.start=ae->idx;
+			currepeat.repeat_counter=1;
 		} else {
 			currepeat.start=ae->idx;
 			currepeat.cpt=-1;
@@ -7340,6 +7439,7 @@ void __REND(struct s_assenv *ae) {
 			MaxError(ae);
 		} else {
 			ae->repeat[ae->ir-1].cpt--;
+			ae->repeat[ae->ir-1].repeat_counter++;
 			if (ae->repeat[ae->ir-1].cpt) {
 				ae->idx=ae->repeat[ae->ir-1].start;
 				/* refresh macro check index */
@@ -7363,6 +7463,7 @@ void __UNTIL(struct s_assenv *ae) {
 			MaxError(ae);
 		} else {
 			if (ae->wl[ae->idx].t==0 && ae->wl[ae->idx+1].t==1) {
+				ae->repeat[ae->ir-1].repeat_counter++;
 				ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 				if (!ComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,2)) {
 					ae->idx=ae->repeat[ae->ir-1].start;
@@ -9360,6 +9461,15 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		ae->outputfilename=TxtStrDup("rasmoutput");
 	}
 
+	if (!strstr(filename,".") && !FileExists(filename)) {
+		/* pas d'extension, fichier non trouvé */
+		filename=MemRealloc(filename,l+5);
+		strcat(filename,".asm");
+		if (!FileExists(filename)) {
+			TxtReplace(filename,".asm",".z80",0);
+		}
+	}
+	
 	rasm_printf(ae,"Pre-processing [%s]\n",filename);
 	for (nbinstruction=0;instruction[nbinstruction].mnemo[0];nbinstruction++);
 	qsort(instruction,nbinstruction,sizeof(struct s_asm_keyword),cmpkeyword);
@@ -10139,7 +10249,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, float rough, int export_local, char **labelfilename,
 	 int export_var, int export_equ, char *symbol_name, char *binary_name, char *cartridge_name, char *snapshot_name,
 	 int export_sna, int checkmode, int export_snabrk, int maxerr, char *breakpoint_name, int export_brk, int edskoverwrite,
-	 int as80)
+	 int as80, int v2)
 {
 	#undef FUNC
 	#define FUNC "Rasm"
@@ -10154,10 +10264,17 @@ void Rasm(char *filename, int export_sym, int verbose, char *outputfilename, flo
 	ae->export_equ=export_equ;
 	ae->export_sna=export_sna;
 	ae->export_snabrk=export_snabrk;
+	if (export_sna || export_snabrk) {
+		ae->forcesnapshot=1;
+	}
 	ae->export_brk=export_brk;
 	ae->edskoverwrite=edskoverwrite;
 	ae->rough=rough;
 	ae->as80=as80;
+	if (v2) {
+		ae->forcesnapshot=1;
+		ae->snapshot.version=2;
+	}
 	ae->maxerr=maxerr;
 	ae->breakpoint_name=breakpoint_name;
 	ae->symbol_name=symbol_name;
@@ -10630,6 +10747,7 @@ void Usage(int help)
 		printf("SNAPSHOT:\n");
 		printf("-sb export breakpoints in snapshot (BRKS & BRKC chunks)\n");
 		printf("-ss export symbols in the snapshot (SYMB chunk for ACE)\n");
+		printf("-v2 export snapshot version 2 instead of version 3\n");
 		printf("PARSING:\n");
 		printf("-me <value>    set maximum number of error (0==no maximum)\n");
 		printf("\n");
@@ -10781,7 +10899,7 @@ printf("\n\n");
 int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough, int *export_local,
 	 char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name,
 	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk,
-	 int *edskoverwrite, int *as80)
+	 int *edskoverwrite, int *as80, int *v2)
 {
 	#undef FUNC
 	#define FUNC "ParseOptions"
@@ -10806,7 +10924,7 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 				switch (argv[i][2]) {
 					case 0:
 						*rough=0.0;
-						break;
+						return i;
 					case 'E':
 					case 'e':
 						if (i+1<argc) {
@@ -10921,7 +11039,12 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 			case 'c':*verbose|=8;
 				break;
 			case 'V':
-			case 'v':*verbose=1;
+			case 'v':
+				if (!argv[i][2]) {
+					*verbose=1;
+				} else if (argv[i][2]=='2') {
+					*v2=1;
+				}
 				break;
 			case 'N':
 			case 'n':Licenses();
@@ -10932,7 +11055,7 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 		}
 	} else {
 		if (*filename==NULL) {
-			*filename=argv[i];
+			*filename=TxtStrDup(argv[i]);
 		} else if (*outputfilename==NULL) {
 			*outputfilename=argv[i];
 		} else Usage(1);
@@ -10947,7 +11070,7 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *export_sym, int *verbose, char **outputfilename, float *rough,
 	 int *export_local, char ***labelfilename, int *export_var, int *export_equ, char **symbol_name, char **binary_name, char **cartridge_name,
 	 char **snapshot_name, int *export_sna, int *checkmode, int *export_snabrk, int *maxerr, char **breakpoint_name, int *export_brk,
-	 int *edskoverwrite, int *as80)
+	 int *edskoverwrite, int *as80, int *v2)
 {
 	#undef FUNC
 	#define FUNC "GetParametersFromCommandLine"
@@ -10956,7 +11079,7 @@ void GetParametersFromCommandLine(int argc, char **argv, char **filename, int *e
 	for (i=1;i<argc;i++)
 		i+=ParseOptions(&argv[i],argc-i,filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,
 			export_var,export_equ,symbol_name,binary_name,cartridge_name,snapshot_name,export_sna,checkmode,
-			export_snabrk,maxerr,breakpoint_name,export_brk,edskoverwrite,as80);
+			export_snabrk,maxerr,breakpoint_name,export_brk,edskoverwrite,as80,v2);
 
 	if (!*filename) Usage(0);
 	if (*export_local && !*export_sym) Usage(1); // à revoir?
@@ -10991,6 +11114,7 @@ int main(int argc, char **argv)
 	int edskoverwrite=0;
 	float rough=0.5;
 	int as80=0;
+	int v2=0;
 	char *symbol_name=NULL;
 	char *binary_name=NULL;
 	char *cartridge_name=NULL;
@@ -10999,10 +11123,10 @@ int main(int argc, char **argv)
 
 	GetParametersFromCommandLine(argc,argv,&filename,&export_sym,&verbose,&outputfilename,&rough,&export_local,&labelfilename,
 		&export_var,&export_equ,&symbol_name,&binary_name,&cartridge_name,&snapshot_name,&export_sna,&checkmode,&export_snabrk,
-		&maxerr,&breakpoint_name,&export_brk,&edskoverwrite,&as80);
+		&maxerr,&breakpoint_name,&export_brk,&edskoverwrite,&as80,&v2);
 	Rasm(filename,export_sym,verbose,outputfilename,rough,export_local,labelfilename,export_var,export_equ,symbol_name,
 		binary_name,cartridge_name,snapshot_name,export_sna,checkmode,export_snabrk,maxerr,breakpoint_name,export_brk,
-		edskoverwrite,as80);
+		edskoverwrite,as80,v2);
 	#ifdef RDD
 	/* private dev lib tools */
 	CloseLibrary();

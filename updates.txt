@@ -1,3 +1,11 @@
+update v0.74
+- usage of snapshot directives forces snapshot output
+- try to load .asm or .Z80 file if filename given is not found and has no extension
+- BREAKPOINT directive may have an additional parameter to set break adress anywhere
+- declaring two MACRO with the same name will trigger an error
+- bugfix regression of -m option handling
+- each REPEAT or WHILE loop export a REPEAT_COUNTER or WHILE_COUNTER variable, locally
+
 update v0.73
 - bugfix in snapshot directive
 - bugfix in snapshot when using distinct bank instead of banksets
