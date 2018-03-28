@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.74"
+#define PROGRAM_VERSION   "0.75"
 #define PROGRAM_DATE      "xx/03/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -33,15 +33,15 @@ arising from,  out of  or in connection  with  the software  or  the  use  or  o
 Software. »
 -----------------------------------------------------------------------------------------------------
 GCC compilation:
-cc rasm_v071.c -O2 -lm -lrt
+cc rasm_v075.c -O2 -lm -lrt
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v071.c -O2
+cl.exe rasm_v075.c -O2
 
 MorphOS compilation (ixemul):
-ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v071.c
+ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v075.c
 strip rasm
 */
 
@@ -93,7 +93,9 @@ E_COMPUTE_EVALUATION_COMPUTE_ONLY
 };
 
 enum e_compute_operation_type {
-E_COMPUTE_OPERATION_PUSH_DATASTC,
+E_COMPUTE_OPERATION_PUSH_DATASTC=0,
+E_COMPUTE_OPERATION_OPEN,
+E_COMPUTE_OPERATION_CLOSE,
 E_COMPUTE_OPERATION_ADD,
 E_COMPUTE_OPERATION_SUB,
 E_COMPUTE_OPERATION_DIV,
@@ -104,6 +106,13 @@ E_COMPUTE_OPERATION_MOD,
 E_COMPUTE_OPERATION_XOR,
 E_COMPUTE_OPERATION_SHL,
 E_COMPUTE_OPERATION_SHR,
+E_COMPUTE_OPERATION_BAND,
+E_COMPUTE_OPERATION_BOR,
+E_COMPUTE_OPERATION_LOWER,
+E_COMPUTE_OPERATION_GREATER,
+E_COMPUTE_OPERATION_EQUAL,
+E_COMPUTE_OPERATION_LOWEREQ,
+E_COMPUTE_OPERATION_GREATEREQ,
 /* math functions */
 E_COMPUTE_OPERATION_SIN,
 E_COMPUTE_OPERATION_COS,
@@ -122,17 +131,10 @@ E_COMPUTE_OPERATION_HIGH,
 E_COMPUTE_OPERATION_END
 };
 
-struct s_compute_compiled_operation {
-enum e_compute_operation_type operation_type;
-double data_static;
-};
-
-enum e_computing_error {
-COMPUTING_OK=0,
-COMPUTING_ERROR_CLOSING_PARENTHESIS,
-COMPUTING_ERROR_INVALID_CHARACTER,
-COMPUTING_ERROR_MINUS_WITHOUT_DATA,
-COMPUTING_ERROR_END
+struct s_compute_element {
+enum e_compute_operation_type operator;
+double value;
+int priority;
 };
 
 enum e_expression {
@@ -494,6 +496,7 @@ struct s_assenv {
 	/* repeat */
 	struct s_repeat *repeat;
 	int ir,mr;
+	int infinite;
 	/* while/wend */
 	struct s_whilewend *whilewend;
 	int iw,mw;
@@ -528,10 +531,13 @@ struct s_assenv {
 	struct s_hexbin *hexbin;
 	int ih,mh;
 	/* automates */
+	char AutomateExpressionValidCharFirst[256];
 	char AutomateExpressionValidChar[256];
 	char AutomateExpressionDecision[256];
 	char AutomateValidLabelFirst[256];
 	char AutomateValidLabel[256];
+	char AutomateDigit[256];
+	char AutomateHexa[256];
 	/* output */
 	char *outputfilename;
 	int export_sym,export_local;
@@ -700,9 +706,12 @@ A-Z variable ou fonction (cos, sin, tan, sqr, pow, mod, and, xor, mod, ...)
 +*-/&^§| operateur
 */
 
-#define AutomateExpressionValidCharDefinition "#%0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@${}"
+#define AutomateExpressionValidCharFirstDefinition "#%0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@${"
+#define AutomateExpressionValidCharDefinition "0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_}"
 #define AutomateValidLabelFirstDefinition ".ABCDEFGHIJKLMNOPQRSTUVWXYZ_@"
 #define AutomateValidLabelDefinition "0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@"
+#define AutomateDigitDefinition ".0123456789"
+#define AutomateHexaDefinition "0123456789ABCDEF"
 
 #ifndef NO_3RD_PARTIES
 unsigned char *LZ4_crunch(unsigned char *data, int zelen, int *retlen){
@@ -1748,16 +1757,27 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	#undef FUNC
 	#define FUNC "ComputeExpressionCore"
 
-	static struct s_compute_compiled_operation *operation=NULL;
-	static int maxoperation=0;
-	int nboperation=0;
-	struct s_compute_compiled_operation compiled_operation={0};
-	enum e_computing_error computing_error=COMPUTING_OK;
+	/* evaluator v2 */
+	static struct s_compute_element *tokenstack=NULL;
+	static int maxtokenstack=0;
+	int nbtokenstack=0;
+
+	static struct s_compute_element *computestack=NULL;
+	static int maxcomputestack=0;
+	int nbcomputestack=0;
+
+	static struct s_compute_element *operatorstack=NULL;
+	static int maxoperatorstack=0;
+	int nboperatorstack=0;
+
+	struct s_compute_element stackelement;
+	int o2,okclose,itoken;
+	
+	/* parser legacy */
 	static char *varbuffer=NULL;
 	static int ivar=0,maxivar=1;
-	int curoperator,operator1,operator2,lookforward=0;
 	int trigger=0,lowflag=0;
-	int idx=0,crc,icheck;
+	int idx=0,crc,icheck,is_binary;
 	char c;
 	/* backup alias replace */
 	char *zeexpression,*expr;
@@ -1769,16 +1789,6 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	struct s_label *curlabel;
 	int minusptr,imkey,bank,page;
 	double curval;
-	/* dynamic isolation */
-	static int max_isolation_depth=0;
-	static int *lookf_backup=NULL;
-	static int *oper2_backup=NULL;
-	static int *oper1_backup=NULL;
-	static int *lowfl_backup=NULL;
-	static int *trigg_backup=NULL;
-	static int *funct_backup=NULL;
-	int isolation_end_flag=0;
-	int isolation=0;
 	/* negative value */
 	int allow_minus_as_sign=0;
 	/* execution */
@@ -1788,22 +1798,12 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 
 	/* memory cleanup */
 	if (!ae) {
-		if (lookf_backup) { 
-			MemFree(lookf_backup);lookf_backup=NULL;
-			MemFree(oper1_backup);oper1_backup=NULL;
-			MemFree(oper2_backup);oper2_backup=NULL;
-			MemFree(lowfl_backup);lowfl_backup=NULL;
-			MemFree(trigg_backup);trigg_backup=NULL;
-			MemFree(funct_backup);funct_backup=NULL;
-		}
-		if (operation) MemFree(operation);operation=NULL;
-		if (varbuffer) MemFree(varbuffer);varbuffer=NULL;
-		if (maccu) MemFree(accu);accu=NULL;
-		max_isolation_depth=0;
-		maxoperation=0;
-		maxivar=1;
-		maccu=0;
-		ivar=0;
+		if (maccu) MemFree(accu);
+		if (maxivar) MemFree(varbuffer);
+		if (maxtokenstack) MemFree(tokenstack);
+		if (maxcomputestack) MemFree(computestack);
+		if (maxoperatorstack) MemFree(operatorstack);
+		maccu=maxivar=maxtokenstack=maxcomputestack=maxoperatorstack=0;
 		return 0.0;
 	}
 	/* be sure to have at least some bytes allocated */
@@ -1813,11 +1813,11 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	if (!zeexpression[0]) {
 		return 0;
 	}
-	
+
+	/* hack if the first value is negative */
 	if (zeexpression[0]=='-') {
-		compiled_operation.operation_type=E_COMPUTE_OPERATION_PUSH_DATASTC;
-		compiled_operation.data_static=0.0;
-		ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
+		memset(&stackelement,0,sizeof(stackelement));
+		ObjectArrayAddDynamicValueConcat((void **)&tokenstack,&nbtokenstack,&maxtokenstack,&stackelement,sizeof(stackelement));
 	}
 
 	/* is there ascii char? */
@@ -1847,101 +1847,76 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		
 		idx++;
 	}
-	
-	idx=operator1=operator2=0;
+	/***********************************************************
+	  C O M P U T E   E X P R E S S I O N   M A I N    L O O P
+	***********************************************************/
+	idx=0;
 	while ((c=zeexpression[idx])!=0) {
-		if (isolation_end_flag) {
-			isolation_end_flag=0;
-			lookforward=lookf_backup[isolation];
-			operator1=oper1_backup[isolation];
-			operator2=oper2_backup[isolation];
-			lowflag=lowfl_backup[isolation];
-			trigger=trigg_backup[isolation];
-			
-			if (funct_backup[isolation]) {
-				compiled_operation.operation_type=funct_backup[isolation];
-				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-			}
-			if (trigger) {
-				if (lookforward==2) {
-					curoperator=operator2;
-					lookforward=1;
-				} else {
-					curoperator=operator1;
-					lookforward=0;
-				}
-				switch (curoperator) {
-					case '+':compiled_operation.operation_type=E_COMPUTE_OPERATION_ADD;break;
-					case '-':compiled_operation.operation_type=E_COMPUTE_OPERATION_SUB;break;
-					case '*':compiled_operation.operation_type=E_COMPUTE_OPERATION_MUL;break;
-					case '/':compiled_operation.operation_type=E_COMPUTE_OPERATION_DIV;break;
-					case '&':compiled_operation.operation_type=E_COMPUTE_OPERATION_AND;break;
-					case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
-					case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
-					case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
-					case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
-					case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
-				}
-				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-				trigger=0;
-			}
-
-		} else
 		switch (c) {
 			/* parenthesis */
 			case '(':
-			//case '[':
-				if (isolation>=max_isolation_depth) {
-					max_isolation_depth+=16;
-					lookf_backup=MemRealloc(lookf_backup,sizeof(int)*max_isolation_depth);
-					oper1_backup=MemRealloc(oper1_backup,sizeof(int)*max_isolation_depth);
-					oper2_backup=MemRealloc(oper2_backup,sizeof(int)*max_isolation_depth);
-					lowfl_backup=MemRealloc(lowfl_backup,sizeof(int)*max_isolation_depth);
-					trigg_backup=MemRealloc(trigg_backup,sizeof(int)*max_isolation_depth);
-					funct_backup=MemRealloc(funct_backup,sizeof(int)*max_isolation_depth);
-				}
-				lookf_backup[isolation]=lookforward;lookforward=0;
-				oper1_backup[isolation]=operator1;
-				oper2_backup[isolation]=operator2;
-				lowfl_backup[isolation]=lowflag;lowflag=0;
-				trigg_backup[isolation]=trigger;trigger=0;
-				funct_backup[isolation]=0;
-				isolation++;
 				allow_minus_as_sign=1;
 				break;
 			case ')':
-			//case ']':
-				isolation--;
-				if (isolation<0) computing_error=COMPUTING_ERROR_CLOSING_PARENTHESIS;
-				trigger=1;
-				isolation_end_flag=1;
 				allow_minus_as_sign=0;
 				break;
 			/* operator detection */
 			case '*':
-			case '&':
-			case '^':
 			case '/':
+			case '^':
 			case '[':
+			case '§':
+			case '+':
 			case ']':
-				trigger=1;
-				if (lookforward==0) {
-					operator1=c;
-					lookforward=1;
-				} else if (lookforward==1) {
-					operator2=c;
-					lookforward=2;
-				} else {
-					rasm_printf(ae,"ComputeExpressionCore - INTERNAL ERROR\n");exit(-59);
-				}
 				allow_minus_as_sign=1;
 				break;
-			/* low priority operator */
-			case '§':
+			case '&':
+				allow_minus_as_sign=1;
+				if (c=='&' && zeexpression[idx+1]=='&') {
+					idx++;
+					c='a'; // boolean AND
+				}
+				break;
 			case '|':
-			case '+':
+				allow_minus_as_sign=1;
+				if (c=='|' && zeexpression[idx+1]=='|') {
+					idx++;
+					c='o'; // boolean OR
+				}
+				break;
+			/* testing */
+			case '<':
+				allow_minus_as_sign=1;
+				if (zeexpression[idx+1]=='=') {
+					idx++;
+					c='k'; // boolean LOWEREQ
+				} else {
+					c='l';
+				}
+				break;
+			case '>':
+				allow_minus_as_sign=1;
+				if (zeexpression[idx+1]=='=') {
+					idx++;
+					c='g'; // boolean GREATEREQ
+				} else {
+					c='h';
+				}
+				break;
+			case '=':
+				allow_minus_as_sign=1;
+				if (zeexpression[idx+1]=='=') {
+					idx++;
+					c='e'; // boolean EQUAL
+				} else if (ae->maxam) {
+					c='e'; // boolean EQUAL
+				} else {
+					printf("bug d'egalite a voir\n");
+					c='e'; // boolean EQUAL
+				}
+				break;
 			case '-':
-				if (allow_minus_as_sign && c=='-') {
+				if (allow_minus_as_sign) {
 					/* previous char was an opening parenthesis or an operator */
 					ivar=0;
 					varbuffer[ivar++]='-';
@@ -1955,115 +1930,143 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					}
 					varbuffer[ivar]=0;
 					if (ivar<2) {
-						computing_error=COMPUTING_ERROR_MINUS_WITHOUT_DATA;
+						rasm_printf(ae,"[%s] Error line %d - invalid minus sign in expression [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+						MaxError(ae);
+						if (!original) {
+							MemFree(zeexpression);
+						}
+						return 0;
 					}
 					break;
 				}
-				
-				if (ae->maxam) {
-					/* MAXAM shit */
-					trigger=1;
-					if (lookforward==0) {
-						operator1=c;
-						lookforward=1;
-					} else if (lookforward==1) {
-						operator2=c;
-						lookforward=2;
-					} else {
-						rasm_printf(ae,"ComputeExpressionCore - Maxam shit INTERNAL ERROR\n");exit(-59);
-					}
-				}
-				else {
-					/* RASM classic */
-					if (lookforward==0) {
-						operator1=c;
-						lookforward=1;
-					} else if (lookforward==1) {
-						operator2=c;
-						lookforward=2;
-						trigger=1;
-						lowflag=1;
-					} else {
-						rasm_printf(ae,"Internal error on expression [%s]\n",zeexpression);
-						exit(-44);
-					}
-				}
 				allow_minus_as_sign=1;
 				break;
+				
+			/* operator OR binary value */
+			case '%':
+				/* % symbol may be a modulo or a binary literal value */
+				is_binary=0;
+				for (icheck=1;zeexpression[idx+icheck];icheck++) {
+					switch (zeexpression[idx+icheck]) {
+						case '1':
+						case '0':/* still binary */
+							is_binary=1;
+							break;
+						case '+':
+						case '-':
+						case '/':
+						case '*':
+						case '|':
+						case '§':
+						case '^':
+						case '&':
+						case '(':
+						case ')':
+							if (is_binary) is_binary=2; else is_binary=-1;
+							break;
+						default:
+							is_binary=-1;
+					}
+					if (is_binary==2) {
+						break;
+					}
+					if (is_binary==-1) {
+						is_binary=0;
+						break;
+					}
+				}
+				if (!is_binary) {
+					allow_minus_as_sign=1;
+					break;
+				}
 			default:
 				allow_minus_as_sign=0;
 				/* semantic analysis */
 				startvar=idx;
 				ivar=0;
-				while (ae->AutomateExpressionValidChar[((int)c)&0xFF]) {
+				/* first char does not allow same chars as next chars */
+				if (ae->AutomateExpressionValidCharFirst[((int)c)&0xFF]) {
 					varbuffer[ivar++]=c;
 					StateMachineResizeBuffer(&varbuffer,ivar,&maxivar);
 					idx++;
 					c=zeexpression[idx];
+					while (ae->AutomateExpressionValidChar[((int)c)&0xFF]) {
+						varbuffer[ivar++]=c;
+						StateMachineResizeBuffer(&varbuffer,ivar,&maxivar);
+						idx++;
+						c=zeexpression[idx];
+					}
 				}
 				varbuffer[ivar]=0;
 				if (!ivar) {
-					computing_error=COMPUTING_ERROR_INVALID_CHARACTER;
-					break; /* debile */
-				}
-		}
-		if (c && !ivar && !isolation_end_flag) idx++;
-	
-		/* must compute all opened operators! */
-		if (isolation_end_flag) {
-		
-			if (lookforward) {
-				if (lookforward==2) {
-					curoperator=operator2;
-					lookforward=1;
-				} else if (lookforward==1) {
-					curoperator=operator1;
-					lookforward=0;
-				}
-				switch (curoperator) {
-					case '+':compiled_operation.operation_type=E_COMPUTE_OPERATION_ADD;break;
-					case '-':compiled_operation.operation_type=E_COMPUTE_OPERATION_SUB;break;
-					case '*':compiled_operation.operation_type=E_COMPUTE_OPERATION_MUL;break;
-					case '/':compiled_operation.operation_type=E_COMPUTE_OPERATION_DIV;break;
-					case '&':compiled_operation.operation_type=E_COMPUTE_OPERATION_AND;break;
-					case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
-					case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
-					case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
-					case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
-					case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
-					case 0:break;
-				}
-				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-				/* need to push again */
-				if (lookforward) {
-					lookforward=0;
-					switch (operator1) {
-						case '+':compiled_operation.operation_type=E_COMPUTE_OPERATION_ADD;break;
-						case '-':compiled_operation.operation_type=E_COMPUTE_OPERATION_SUB;break;
-						case '*':compiled_operation.operation_type=E_COMPUTE_OPERATION_MUL;break;
-						case '/':compiled_operation.operation_type=E_COMPUTE_OPERATION_DIV;break;
-						case '&':compiled_operation.operation_type=E_COMPUTE_OPERATION_AND;break;
-						case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
-						case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
-						case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
-						case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
-						case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
+					rasm_printf(ae,"[%s] Error line %d - invalid char in expression [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+					MaxError(ae);
+					if (!original) {
+						MemFree(zeexpression);
 					}
-					ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
+					return 0;
 				}
-			}
 		}
+		if (c && !ivar) idx++;
 	
-		/* we've just read a value, so we push it */
-		if (ivar) {
+		/************************************
+		   S T A C K   D I S P A T C H E R
+		************************************/
+		/* push operator or stack value */
+		if (!ivar) {
+			/************************************
+			          O P E R A T O R 
+			************************************/
+			switch (c) {
+				/* priority 0 */
+				case '(':stackelement.operator=E_COMPUTE_OPERATION_OPEN;stackelement.priority=0;break;
+				case ')':stackelement.operator=E_COMPUTE_OPERATION_CLOSE;stackelement.priority=0;break;
+				/* priority 1 */
+				case '*':stackelement.operator=E_COMPUTE_OPERATION_MUL;stackelement.priority=1;break;
+				case '/':stackelement.operator=E_COMPUTE_OPERATION_DIV;stackelement.priority=1;break;
+				case '§':stackelement.operator=E_COMPUTE_OPERATION_MOD;stackelement.priority=1;break;
+				/* priority 2 */
+				case '+':stackelement.operator=E_COMPUTE_OPERATION_ADD;stackelement.priority=2;break;
+				case '-':stackelement.operator=E_COMPUTE_OPERATION_SUB;stackelement.priority=2;break;
+				/* priority 3 */
+				case '[':stackelement.operator=E_COMPUTE_OPERATION_SHL;stackelement.priority=3;break;
+				case ']':stackelement.operator=E_COMPUTE_OPERATION_SHR;stackelement.priority=3;break;
+				/* priority 4 */
+				case 'l':stackelement.operator=E_COMPUTE_OPERATION_LOWER;stackelement.priority=4;break;
+				case 'g':stackelement.operator=E_COMPUTE_OPERATION_GREATER;stackelement.priority=4;break;
+				case 'e':stackelement.operator=E_COMPUTE_OPERATION_EQUAL;stackelement.priority=4;break;
+				case 'k':stackelement.operator=E_COMPUTE_OPERATION_LOWEREQ;stackelement.priority=4;break;
+				case 'h':stackelement.operator=E_COMPUTE_OPERATION_GREATEREQ;stackelement.priority=4;break;
+				/* priority 5 */
+				case '&':stackelement.operator=E_COMPUTE_OPERATION_AND;stackelement.priority=5;break;
+				/* priority 6 */
+				case '^':stackelement.operator=E_COMPUTE_OPERATION_XOR;stackelement.priority=6;break;
+				/* priority 7 */
+				case '|':stackelement.operator=E_COMPUTE_OPERATION_OR;stackelement.priority=7;break;
+				/* priority 8 */
+				case 'a':stackelement.operator=E_COMPUTE_OPERATION_BAND;stackelement.priority=8;break;
+				/* priority 9 */
+				case 'o':stackelement.operator=E_COMPUTE_OPERATION_BOR;stackelement.priority=9;break;
+				
+				default:rasm_printf(ae,"[%s] Error line %d - expression [%s] - unknown operator\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+						MaxError(ae);
+			}
+			if (ae->maxam) {
+				stackelement.priority=0;
+			}
+			/* stackelement.value isn't used */
+		} else {
+			/************************************
+			              V A L U E
+			************************************/
 			if (varbuffer[0]=='-') minusptr=1; else minusptr=0;
 			/* constantes ou variables/labels */
 			switch (varbuffer[minusptr]) {
 				case '0':
 					/* 0x hexa value hack */
-					if (varbuffer[minusptr+1]=='X' && ((varbuffer[minusptr+2]>='0' && varbuffer[minusptr+2]<='9') || (varbuffer[minusptr+2]>='A' && varbuffer[minusptr+2]<='F'))) {
+					if (varbuffer[minusptr+1]=='X' && ae->AutomateHexa[varbuffer[minusptr+2]]) {
 						for (icheck=minusptr+3;varbuffer[icheck];icheck++) {
-							if ((varbuffer[icheck]>='0' && varbuffer[icheck]<='9') || (varbuffer[icheck]>='A' && varbuffer[icheck]<='F')) continue;
+							if (ae->AutomateHexa[varbuffer[icheck]]) continue;
 							rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid hex number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
 							MaxError(ae);
 							break;
@@ -2072,14 +2075,14 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 						break;
 					} else
 					/* 0b binary value hack */
-					if (varbuffer[minusptr+1]=='X' && (varbuffer[minusptr+2]>='0' && varbuffer[minusptr+2]<='1')) {
+					if (varbuffer[minusptr+1]=='B' && (varbuffer[minusptr+2]>='0' && varbuffer[minusptr+2]<='1')) {
 						for (icheck=minusptr+3;varbuffer[icheck];icheck++) {
 							if (varbuffer[icheck]>='0' && varbuffer[icheck]<='1') continue;
 							rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid binary number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
 							MaxError(ae);
 							break;
 						}
-						curval=strtol(varbuffer+minusptr+2,NULL,16);
+						curval=strtol(varbuffer+minusptr+2,NULL,2);
 						break;
 					}
 				case '1':
@@ -2093,12 +2096,33 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case '9':
 					/* check number */
 					for (icheck=minusptr;varbuffer[icheck];icheck++) {
-						if ((varbuffer[icheck]>='0' && varbuffer[icheck]<='9') || varbuffer[icheck]=='.') continue;
-						rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
-						MaxError(ae);
+						if (ae->AutomateDigit[varbuffer[icheck]]) continue;
+						/* Intel hexa & binary style */
+						switch (varbuffer[strlen(varbuffer)-1]) {
+							case 'H':
+								for (icheck=minusptr;varbuffer[icheck+1];icheck++) {
+									if (ae->AutomateHexa[varbuffer[icheck]]) continue;
+									rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid hex number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+									MaxError(ae);
+								}
+								curval=strtol(varbuffer+minusptr,NULL,16);
+								break;
+							case 'B':
+								for (icheck=minusptr;varbuffer[icheck+1];icheck++) {
+									if (varbuffer[icheck]=='0' || varbuffer[icheck]=='1') continue;
+									rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid binary number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+									MaxError(ae);
+								}
+								curval=strtol(varbuffer+minusptr,NULL,2);
+								break;
+							default:
+								rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
+								MaxError(ae);
+						}
+						icheck=0;
 						break;
 					}
-					curval=atof(varbuffer+minusptr);
+					if (!varbuffer[icheck]) curval=atof(varbuffer+minusptr);
 					break;
 				case '%':
 					/* check number */
@@ -2121,7 +2145,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 						MaxError(ae);
 					}
 					for (icheck=minusptr+1;varbuffer[icheck];icheck++) {
-						if ((varbuffer[icheck]>='0' && varbuffer[icheck]<='9') || (varbuffer[icheck]>='A' && varbuffer[icheck]<='F')) continue;
+						if (ae->AutomateHexa[varbuffer[icheck]]) continue;
 						rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid hex number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
 						MaxError(ae);
 						break;
@@ -2130,9 +2154,9 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					break;
 				default:
 					/* $ hex value hack */
-					if (varbuffer[minusptr+0]=='$' &&  ((varbuffer[minusptr+1]>='0' && varbuffer[minusptr+1]<='9') || (varbuffer[minusptr+1]>='A' && varbuffer[minusptr+1]<='F'))) {
+					if (varbuffer[minusptr+0]=='$' && ae->AutomateHexa[varbuffer[minusptr+1]]) {
 						for (icheck=minusptr+2;varbuffer[icheck];icheck++) {
-							if ((varbuffer[icheck]>='0' && varbuffer[icheck]<='9') || (varbuffer[icheck]>='A' && varbuffer[icheck]<='F')) continue;
+							if (ae->AutomateHexa[varbuffer[icheck]]) continue;
 							rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is not a valid hex number\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression,varbuffer);
 							MaxError(ae);
 							break;
@@ -2151,28 +2175,33 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 						curval=strtol(varbuffer+minusptr+1,NULL,8);
 						break;
 					}
+					/* Intel hexa value hack */
+					if (ae->AutomateHexa[varbuffer[minusptr+0]]) {
+						if (varbuffer[strlen(varbuffer)-1]=='H') {
+							for (icheck=minusptr;varbuffer[icheck+1];icheck++) {
+								if (!ae->AutomateHexa[varbuffer[icheck]]) break;
+							}
+							if (!varbuffer[icheck+1]) {
+								curval=strtol(varbuffer+minusptr,NULL,16);
+								break;
+							}
+						}
+					}
 					
                     crc=GetCRC(varbuffer+minusptr);
 				
 					for (imkey=0;math_keyword[imkey].mnemo[0];imkey++) {
 						if (crc==math_keyword[imkey].crc && strcmp(varbuffer+minusptr,math_keyword[imkey].mnemo)==0) {
 							if (c=='(') {
-								if (isolation>=max_isolation_depth) {
-									max_isolation_depth+=16;
-									lookf_backup=MemRealloc(lookf_backup,sizeof(int)*max_isolation_depth);
-									oper1_backup=MemRealloc(oper1_backup,sizeof(int)*max_isolation_depth);
-									oper2_backup=MemRealloc(oper2_backup,sizeof(int)*max_isolation_depth);
-									lowfl_backup=MemRealloc(lowfl_backup,sizeof(int)*max_isolation_depth);
-									trigg_backup=MemRealloc(trigg_backup,sizeof(int)*max_isolation_depth);
-									funct_backup=MemRealloc(funct_backup,sizeof(int)*max_isolation_depth);
-								}
-								lookf_backup[isolation]=lookforward;lookforward=0;
-								oper1_backup[isolation]=operator1;
-								oper2_backup[isolation]=operator2;
-								lowfl_backup[isolation]=lowflag;lowflag=0;
-								trigg_backup[isolation]=trigger;trigger=0;
-								funct_backup[isolation]=math_keyword[imkey].operation;
-								isolation++;
+								/* push function as operator! */
+								stackelement.operator=math_keyword[imkey].operation;
+								//stackelement.priority=0;
+								/************************************************
+								      C R E A T E    E X T R A     T O K E N
+								************************************************/
+								ObjectArrayAddDynamicValueConcat((void **)&tokenstack,&nbtokenstack,&maxtokenstack,&stackelement,sizeof(stackelement));
+								stackelement.operator=E_COMPUTE_OPERATION_OPEN;
+								ObjectArrayAddDynamicValueConcat((void **)&tokenstack,&nbtokenstack,&maxtokenstack,&stackelement,sizeof(stackelement));
 								allow_minus_as_sign=1;
 								idx++;
 							} else {
@@ -2356,136 +2385,156 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 			}
 			if (minusptr) curval=-curval;
 
-			if (!lowflag) {
-				compiled_operation.operation_type=E_COMPUTE_OPERATION_PUSH_DATASTC;
-				compiled_operation.data_static=curval;
-				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-			}
-			if (trigger) {
-				if (lowflag) {
-					curoperator=operator1;
-					lookforward=1;
-					operator1=operator2;
-				} else {
-					if (lookforward==2) {
-						curoperator=operator2;
-						lookforward=1;
-					} else {
-						curoperator=operator1;
-						lookforward=0;
-					}
-				}
-				switch (curoperator) {
-					case '+':compiled_operation.operation_type=E_COMPUTE_OPERATION_ADD;break;
-					case '-':compiled_operation.operation_type=E_COMPUTE_OPERATION_SUB;break;
-					case '*':compiled_operation.operation_type=E_COMPUTE_OPERATION_MUL;break;
-					case '/':compiled_operation.operation_type=E_COMPUTE_OPERATION_DIV;break;
-					case '&':compiled_operation.operation_type=E_COMPUTE_OPERATION_AND;break;
-					case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
-					case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
-					case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
-					case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
-					case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
-				}
-				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-				trigger=0;
-			}
-			if (lowflag) {
-				lowflag=0;
-				compiled_operation.operation_type=E_COMPUTE_OPERATION_PUSH_DATASTC;
-				compiled_operation.data_static=curval;
-				ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-			}
+			stackelement.operator=E_COMPUTE_OPERATION_PUSH_DATASTC;
+			stackelement.value=curval;
+			/* priority isn't used */
+			
 			allow_minus_as_sign=0;
 			ivar=0;
 		}
+		/************************************
+		      C R E A T E    T O K E N
+		************************************/
+		ObjectArrayAddDynamicValueConcat((void **)&tokenstack,&nbtokenstack,&maxtokenstack,&stackelement,sizeof(stackelement));
 	}
 
-	/* duplicated block due to non recursive algo, to handle the last trigger, if any */
-	while (lookforward) {
-		if (lookforward==2) {
-			curoperator=operator2;
-			lookforward=1;
+	/*******************************************************
+	      C R E A T E    E X E C U T I O N    S T A C K
+	*******************************************************/
+#if 0
+printf("---- token stack ------\n");
+	for (i=0;i<nbtokenstack;i++) {
+		if (tokenstack[i].operator==E_COMPUTE_OPERATION_PUSH_DATASTC) {
+			printf("push %.1lf\n",tokenstack[i].value);
 		} else {
-			curoperator=operator1;
-			lookforward=0;
-		}
-		switch (curoperator) {
-			case '+':compiled_operation.operation_type=E_COMPUTE_OPERATION_ADD;break;
-			case '-':compiled_operation.operation_type=E_COMPUTE_OPERATION_SUB;break;
-			case '*':compiled_operation.operation_type=E_COMPUTE_OPERATION_MUL;break;
-			case '/':compiled_operation.operation_type=E_COMPUTE_OPERATION_DIV;break;
-			case '&':compiled_operation.operation_type=E_COMPUTE_OPERATION_AND;break;
-			case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
-			case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
-			case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
-			case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
-			case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
-		}
-		ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-		if (lookforward) {
-			curoperator=operator1;
-			lookforward=0;
-			switch (curoperator) {
-				case '&':compiled_operation.operation_type=E_COMPUTE_OPERATION_AND;break;
-				case '|':compiled_operation.operation_type=E_COMPUTE_OPERATION_OR;break;
-				case '^':compiled_operation.operation_type=E_COMPUTE_OPERATION_XOR;break;
-				case '+':compiled_operation.operation_type=E_COMPUTE_OPERATION_ADD;break;
-				case '-':compiled_operation.operation_type=E_COMPUTE_OPERATION_SUB;break;
-				case '*':compiled_operation.operation_type=E_COMPUTE_OPERATION_MUL;break;
-				case '/':compiled_operation.operation_type=E_COMPUTE_OPERATION_DIV;break;
-				case '§':compiled_operation.operation_type=E_COMPUTE_OPERATION_MOD;break;
-				case '[':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHL;break;
-				case ']':compiled_operation.operation_type=E_COMPUTE_OPERATION_SHR;break;
-			}
-			ObjectArrayAddDynamicValueConcat((void **)&operation,&nboperation,&maxoperation,&compiled_operation,sizeof(compiled_operation));
-		}
-		if (isolation) {
-			isolation--;
-			lookforward=lookf_backup[isolation];
-			operator1=oper1_backup[isolation];
-			operator2=oper2_backup[isolation];
-			lowflag=lowfl_backup[isolation];
-			trigger=trigg_backup[isolation];
+			printf("operation %s p=%d\n",tokenstack[i].operator==E_COMPUTE_OPERATION_MUL?"*":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_ADD?"+":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_DIV?"/":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_SUB?"-":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_BAND?"&&":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_BOR?"||":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_SHL?"<<":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_SHR?">>":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_LOWER?"<":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_GREATER?">":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_EQUAL?"==":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_LOWEREQ?"<=":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_GREATEREQ?">=":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_OPEN?"(":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_CLOSE?")":
+									tokenstack[i].operator==E_COMPUTE_OPERATION_SIN?"sin":
+									"<autre>",tokenstack[i].priority);
 		}
 	}
+printf("----------\n");
+#endif
 
-	if (computing_error) {
-		switch (computing_error) {
-			case COMPUTING_OK:break;
-			case COMPUTING_ERROR_CLOSING_PARENTHESIS:rasm_printf(ae,"(compute) cannot close parenthesis in %d because it was not opened before!\n",idx);break;
-			case COMPUTING_ERROR_INVALID_CHARACTER:rasm_printf(ae,"(compute) invalid character\n",idx);break;
-			case COMPUTING_ERROR_MINUS_WITHOUT_DATA:rasm_printf(ae,"(compute) numeric data or variable must follow operator+minus sign token!\n");break;
-			default:rasm_printf(ae,"(compute) unknown error\n");break;
+	for (itoken=0;itoken<nbtokenstack;itoken++) {
+		switch (tokenstack[itoken].operator) {
+			case E_COMPUTE_OPERATION_PUSH_DATASTC:
+				ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&tokenstack[itoken],sizeof(stackelement));
+				break;
+			case E_COMPUTE_OPERATION_SIN:
+			case E_COMPUTE_OPERATION_COS:
+			case E_COMPUTE_OPERATION_INT:
+			case E_COMPUTE_OPERATION_FLOOR:
+			case E_COMPUTE_OPERATION_ABS:
+			case E_COMPUTE_OPERATION_LN:
+			case E_COMPUTE_OPERATION_LOG10:
+			case E_COMPUTE_OPERATION_SQRT:
+			case E_COMPUTE_OPERATION_ASIN:
+			case E_COMPUTE_OPERATION_ACOS:
+			case E_COMPUTE_OPERATION_ATAN:
+			case E_COMPUTE_OPERATION_EXP:
+			case E_COMPUTE_OPERATION_LOW:
+			case E_COMPUTE_OPERATION_HIGH:
+			case E_COMPUTE_OPERATION_OPEN:
+				ObjectArrayAddDynamicValueConcat((void **)&operatorstack,&nboperatorstack,&maxoperatorstack,&tokenstack[itoken],sizeof(stackelement));
+				break;
+			case E_COMPUTE_OPERATION_ADD:
+			case E_COMPUTE_OPERATION_SUB:
+			case E_COMPUTE_OPERATION_DIV:
+			case E_COMPUTE_OPERATION_MUL:
+			case E_COMPUTE_OPERATION_AND:
+			case E_COMPUTE_OPERATION_OR:
+			case E_COMPUTE_OPERATION_MOD:
+			case E_COMPUTE_OPERATION_XOR:
+			case E_COMPUTE_OPERATION_SHL:
+			case E_COMPUTE_OPERATION_SHR:
+			case E_COMPUTE_OPERATION_BAND:
+			case E_COMPUTE_OPERATION_BOR:
+			case E_COMPUTE_OPERATION_LOWER:
+			case E_COMPUTE_OPERATION_GREATER:
+			case E_COMPUTE_OPERATION_EQUAL:
+			case E_COMPUTE_OPERATION_LOWEREQ:
+			case E_COMPUTE_OPERATION_GREATEREQ:
+				o2=nboperatorstack-1;
+				while (o2>=0 && operatorstack[o2].operator!=E_COMPUTE_OPERATION_OPEN) {
+					if (tokenstack[itoken].priority>=operatorstack[o2].priority || operatorstack[o2].operator>=E_COMPUTE_OPERATION_SIN) {
+						ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[o2],sizeof(stackelement));
+						nboperatorstack--;
+						o2--;
+					} else {
+						break;
+					}
+				}
+				ObjectArrayAddDynamicValueConcat((void **)&operatorstack,&nboperatorstack,&maxoperatorstack,&tokenstack[itoken],sizeof(stackelement));
+				break;
+			case E_COMPUTE_OPERATION_CLOSE:
+				o2=nboperatorstack-1;
+				okclose=0;
+				while (o2>=0) {
+					if (operatorstack[o2].operator!=E_COMPUTE_OPERATION_OPEN) {
+						ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[o2],sizeof(stackelement));
+						nboperatorstack--;
+						o2--;
+					} else {
+						/* discard opening parenthesis as operator */
+						nboperatorstack--;
+						okclose=1;
+						o2--;
+						break;
+					}
+				}
+				if (!okclose) {
+					rasm_printf(ae,"[%s] Error line %d - missing parenthesis [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+					MaxError(ae);
+					if (!original) {
+						MemFree(zeexpression);
+					}
+					return 0;
+				}
+				if (o2>=0 && operatorstack[o2].operator>=E_COMPUTE_OPERATION_SIN) {
+					ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[o2],sizeof(stackelement));
+					nboperatorstack--;
+				}
+				break;
+			default:break;
 		}
-		rasm_printf(ae,"[%s] Error line %d - invalid expression [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
-		MaxError(ae);
-		if (!original) {
-			MemFree(zeexpression);
-		}
-		return 0;
 	}
+	/* pop remaining operators */
+	o2=nboperatorstack-1;
+	while (o2>=0) {
+		ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[o2],sizeof(stackelement));
+		nboperatorstack--;
+		o2--;
+	}
+	
+	/********************************************
+	        E X E C U T E        S T A C K
+	********************************************/
 
-	/* Execute stack */
 	if (ae->maxam || ae->as80) {
 		int workinterval;
 		if (ae->as80) workinterval=0xFFFFFFFF; else workinterval=0xFFFF;
-		for (i=0;i<nboperation;i++) {
-
-#if 0
-			if (operation[i].operation_type==E_COMPUTE_OPERATION_PUSH_DATASTC) {
-				printf("push %.1lf\n",operation[i].data_static);
-			} else {
-				printf("operation %s\n",operation[i].operation_type==E_COMPUTE_OPERATION_MUL?"*":operation[i].operation_type==E_COMPUTE_OPERATION_ADD?"+":"<autre>");
-			}
-#endif
-			switch (operation[i].operation_type) {
+		for (i=0;i<nbcomputestack;i++) {
+			switch (computestack[i].operator) {
 				case E_COMPUTE_OPERATION_PUSH_DATASTC:
 					if (maccu<=paccu) {
 						maccu=16+paccu;
 						accu=MemRealloc(accu,sizeof(double)*maccu);
 					}
-					accu[paccu]=operation[i].data_static;paccu++;
+					accu[paccu]=computestack[i].value;paccu++;
 					break;
 				case E_COMPUTE_OPERATION_ADD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]+(int)accu[paccu-1])&workinterval;paccu--;break;
 				case E_COMPUTE_OPERATION_SUB:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]-(int)accu[paccu-1])&workinterval;paccu--;break;
@@ -2497,6 +2546,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_MOD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]%(int)accu[paccu-1])&workinterval;paccu--;break;
 				case E_COMPUTE_OPERATION_SHL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2])<<((int)accu[paccu-1]);paccu--;break;
 				case E_COMPUTE_OPERATION_SHR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2])>>((int)accu[paccu-1]);paccu--;break;				
+				case E_COMPUTE_OPERATION_BAND:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&&(int)accu[paccu-1])&workinterval;paccu--;break;
+				case E_COMPUTE_OPERATION_BOR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]||(int)accu[paccu-1])&workinterval;paccu--;break;
 				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=(int)sin(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_COS:if (paccu>0) accu[paccu-1]=(int)cos(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=(int)asin(accu[paccu-1])*180.0/3.1415926545;break;
@@ -2511,29 +2562,44 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_LN:if (paccu>0) accu[paccu-1]=(int)log(accu[paccu-1])&workinterval;break;
 				case E_COMPUTE_OPERATION_LOG10:if (paccu>0) accu[paccu-1]=(int)log10(accu[paccu-1])&workinterval;break;
 				case E_COMPUTE_OPERATION_SQRT:if (paccu>0) accu[paccu-1]=(int)sqrt(accu[paccu-1])&workinterval;break;
-				default:rasm_printf(ae,"invalid computing state! (%d)",operation[i].operation_type);
+				default:rasm_printf(ae,"invalid computing state! (%d)\n",computestack[i].operator);
 			}
 			if (!paccu) {
-				rasm_printf(ae,"[%s] Error line %d - empty stack with [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+				rasm_printf(ae,"[%s] Error line %d - Missing operande for calculation [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
 				exit(INTERNAL_ERROR);
 			}
 		}
 	} else {
-		for (i=0;i<nboperation;i++) {
+		for (i=0;i<nbcomputestack;i++) {
 #if 0
-			if (operation[i].operation_type==E_COMPUTE_OPERATION_PUSH_DATASTC) {
-				printf("push %.1lf\n",operation[i].data_static);
+			if (computestack[i].operator==E_COMPUTE_OPERATION_PUSH_DATASTC) {
+				printf("push %.1lf\n",computestack[i].value);
 			} else {
-				printf("operation %s\n",operation[i].operation_type==E_COMPUTE_OPERATION_MUL?"*":operation[i].operation_type==E_COMPUTE_OPERATION_ADD?"+":"<autre>");
+				printf("operation %s p=%d\n",computestack[i].operator==E_COMPUTE_OPERATION_MUL?"*":
+										computestack[i].operator==E_COMPUTE_OPERATION_ADD?"+":
+										computestack[i].operator==E_COMPUTE_OPERATION_DIV?"/":
+										computestack[i].operator==E_COMPUTE_OPERATION_SUB?"-":
+										computestack[i].operator==E_COMPUTE_OPERATION_BAND?"&&":
+										computestack[i].operator==E_COMPUTE_OPERATION_BOR?"||":
+										computestack[i].operator==E_COMPUTE_OPERATION_SHL?"<<":
+										computestack[i].operator==E_COMPUTE_OPERATION_SHR?">>":
+										computestack[i].operator==E_COMPUTE_OPERATION_LOWER?"<":
+										computestack[i].operator==E_COMPUTE_OPERATION_GREATER?">":
+										computestack[i].operator==E_COMPUTE_OPERATION_EQUAL?"==":
+										computestack[i].operator==E_COMPUTE_OPERATION_LOWEREQ?"<=":
+										computestack[i].operator==E_COMPUTE_OPERATION_GREATEREQ?">=":
+										computestack[i].operator==E_COMPUTE_OPERATION_OPEN?"(":
+										computestack[i].operator==E_COMPUTE_OPERATION_CLOSE?")":
+										"<autre>",computestack[i].priority);
 			}
 #endif
-			switch (operation[i].operation_type) {
+			switch (computestack[i].operator) {
 				case E_COMPUTE_OPERATION_PUSH_DATASTC:
 					if (maccu<=paccu) {
 						maccu=16+paccu;
 						accu=MemRealloc(accu,sizeof(double)*maccu);
 					}
-					accu[paccu]=operation[i].data_static;paccu++;
+					accu[paccu]=computestack[i].value;paccu++;
 					break;
 				case E_COMPUTE_OPERATION_ADD:if (paccu>1) accu[paccu-2]+=accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_SUB:if (paccu>1) accu[paccu-2]-=accu[paccu-1];paccu--;break;
@@ -2545,6 +2611,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_MOD:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))%((int)floor(accu[paccu-1]+0.5));paccu--;break;
 				case E_COMPUTE_OPERATION_SHL:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))<<((int)floor(accu[paccu-1]+0.5));paccu--;break;
 				case E_COMPUTE_OPERATION_SHR:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))>>((int)floor(accu[paccu-1]+0.5));paccu--;break;				
+				case E_COMPUTE_OPERATION_BAND:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))&&((int)floor(accu[paccu-1]+0.5));paccu--;break;
+				case E_COMPUTE_OPERATION_BOR:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))||((int)floor(accu[paccu-1]+0.5));paccu--;break;
 				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=sin(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_COS:if (paccu>0) accu[paccu-1]=cos(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=asin(accu[paccu-1])*180.0/3.1415926545;break;
@@ -2559,10 +2627,16 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case E_COMPUTE_OPERATION_LN:if (paccu>0) accu[paccu-1]=log(accu[paccu-1]);break;
 				case E_COMPUTE_OPERATION_LOG10:if (paccu>0) accu[paccu-1]=log10(accu[paccu-1]);break;
 				case E_COMPUTE_OPERATION_SQRT:if (paccu>0) accu[paccu-1]=sqrt(accu[paccu-1]);break;
-				default:rasm_printf(ae,"invalid computing state! (%d)",operation[i].operation_type);
+				/* comparison */
+				case E_COMPUTE_OPERATION_LOWER:if (paccu>1) accu[paccu-2]=accu[paccu-2]<accu[paccu-1];paccu--;break;
+				case E_COMPUTE_OPERATION_LOWEREQ:if (paccu>1) accu[paccu-2]=accu[paccu-2]<=accu[paccu-1];paccu--;break;
+				case E_COMPUTE_OPERATION_EQUAL:if (paccu>1) accu[paccu-2]=accu[paccu-2]==accu[paccu-1];paccu--;break;
+				case E_COMPUTE_OPERATION_GREATER:if (paccu>1) accu[paccu-2]=accu[paccu-2]>accu[paccu-1];paccu--;break;
+				case E_COMPUTE_OPERATION_GREATEREQ:if (paccu>1) accu[paccu-2]=accu[paccu-2]>=accu[paccu-1];paccu--;break;
+				default:rasm_printf(ae,"invalid computing state! (%d)\n",computestack[i].operator);
 			}
 			if (!paccu) {
-				rasm_printf(ae,"[%s] Error line %d - empty stack with [%s]",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+				rasm_printf(ae,"[%s] Error line %d - Missing operande for calculation [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
 				exit(INTERNAL_ERROR);
 			}
 		}
@@ -2574,10 +2648,10 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		return accu[0];
 	} else {
 		if (paccu) {
-			rasm_printf(ae,"[%s] Error line %d - INTERNAL ERROR ComputeExpression stack still contains %d values!",GetExpFile(ae,didx),GetExpLine(ae,didx),paccu);
+			rasm_printf(ae,"[%s] Error line %d - Missing operator\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
 			MaxError(ae);
 		} else {
-			rasm_printf(ae,"[%s] Error line %d - INTERNAL ERROR ComputeExpression nothing in the stack",GetExpFile(ae,didx),GetExpLine(ae,didx));
+			rasm_printf(ae,"[%s] Error line %d - Missing operande for calculation\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
 			MaxError(ae);
 		}
 		return accu[paccu-1];
@@ -2620,6 +2694,9 @@ double ComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int 
 	while (!ae->AutomateExpressionDecision[((int)expr[idx])&0xFF]) idx++;
 
 	switch (ae->AutomateExpressionDecision[((int)expr[idx])&0xFF]) {
+		/*****************************************
+		          M A K E     A L I A S
+		*****************************************/
 		case '~':
 			memset(&curalias,0,sizeof(curalias));
 			ptr_exp=expr+idx;
@@ -2647,16 +2724,14 @@ double ComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int 
 			}
 			*ptr_exp='~';
 			return 0;
+		/*****************************************
+		               S E T     V A R
+		*****************************************/
 		case '=':
 			if (ae->AutomateExpressionDecision[((int)expr[idx+1])&0xFF]==0) {
 				if (expected_eval) {
 					if (ae->maxam) {
-						/* maxam mode, force comparison */
-						wtd=E_COMPUTE_EVALUATION_EQ;
-						backupeval='=';
-						ptr_exp=expr+idx;
-						*ptr_exp=0;
-						ptr_exp2=expr+idx+1;
+						/* maxam mode AND expected a value -> force comparison */
 					} else {
 						rasm_printf(ae,"[%s] Error line %d - meaningless use of an expression [%s]\n",GetExpFile(ae,0),GetExpLine(ae,0),expr);
 						MaxError(ae);
@@ -2685,93 +2760,26 @@ double ComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int 
 						return v;
 					}
 				}
-			} else if (expr[idx+1]=='=') {
-				/* egalite */
-				wtd=E_COMPUTE_EVALUATION_EQ;
-				backupeval='=';
-				ptr_exp=expr+idx;
-				*ptr_exp=0;
-				ptr_exp2=expr+idx+2;
-			} else {
-				rasm_printf(ae,"[%s] Error line %d - Wrong expression\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
-				MaxError(ae);
-				return 0;
 			}
 			break;
-		case '>':
-			if (expr[idx+1]=='=') {
-				wtd=E_COMPUTE_EVALUATION_GE;
-				backupeval='>';
-				ptr_exp=expr+idx;
-				*ptr_exp=0;
-				ptr_exp2=expr+idx+2;
-			} else {
-				wtd=E_COMPUTE_EVALUATION_GT;
-				backupeval='>';
-				ptr_exp=expr+idx;
-				*ptr_exp=0;
-				ptr_exp2=expr+idx+1;
-			}
-			break;
-		case '<':
-			if (expr[idx+1]=='=') {
-				wtd=E_COMPUTE_EVALUATION_LE;
-				backupeval='<';
-				ptr_exp=expr+idx;
-				*ptr_exp=0;
-				ptr_exp2=expr+idx+2;
-			} else {
-				wtd=E_COMPUTE_EVALUATION_LT;
-				backupeval='<';
-				ptr_exp=expr+idx;
-				*ptr_exp=0;
-				ptr_exp2=expr+idx+1;
-			}
-			break;
-		case '!':
-			if (expr[idx+1]=='=') {
-				wtd=E_COMPUTE_EVALUATION_NE;
-				backupeval='!';
-				ptr_exp=expr+idx;
-				*ptr_exp=0;
-				ptr_exp2=expr+idx+2;
-			} else {
-				rasm_printf(ae,"[%s] Error line %d - Wrong expression\n",GetExpFile(ae,0),GetExpLine(ae,0));
-				MaxError(ae);
-				return 0;
-			}
-			break;
+		/*****************************************
+		     P U R E    E X P R E S S I O N
+		*****************************************/
 		case 'E':
-			/* aucun opérateur de comparaison ou affectation rencontré, on calcule */
+			/* aucun opérateur d'affectation rencontré, on calcule */
 			if (expected_eval>1 && !ae->maxam) {
-				rasm_printf(ae,"[%s] Error line %d - Infinite loop! [%s]\n",GetExpFile(ae,0),GetExpLine(ae,0),expr);
+				rasm_printf(ae,"[%s] Error line %d - Bypass infinite loop\n",GetExpFile(ae,0),GetExpLine(ae,0));
 				MaxError(ae);
+				ae->infinite=1;
 				return 0;
 			} else {
 				/* compute */
 				v=ComputeExpressionCore(ae,expr,ptr,didx);
 				return v;
 			}
-		default:
-			rasm_printf(ae,"[%s] Error line %d - Internal ERROR - invalid evaluation state! [%s]\n",GetExpFile(ae,0),GetExpLine(ae,0),expr);
-			exit(-34);
 	}
 
-	/* on compare expr et ptr_exp2 */
-	vl=ComputeExpressionCore(ae,expr,ptr,didx);
-	v=ComputeExpressionCore(ae,ptr_exp2,ptr,didx);
-	*ptr_exp=backupeval;
-	
-	switch (wtd) {
-		case E_COMPUTE_EVALUATION_LT:return vl<v;
-		case E_COMPUTE_EVALUATION_LE:return vl<=v;
-		case E_COMPUTE_EVALUATION_GT:return vl>v;
-		case E_COMPUTE_EVALUATION_GE:return vl>=v;
-		case E_COMPUTE_EVALUATION_NE:return vl!=v;
-		case E_COMPUTE_EVALUATION_EQ:return vl==v;
-		default:break;
-	}
-	return 0;
+	return ComputeExpressionCore(ae,expr,ptr,didx);
 }
 int RoundComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int expression_expected) {
 	return floor(ComputeExpression(ae,expr,ptr,didx,expression_expected)+ae->rough);
@@ -2872,11 +2880,17 @@ void ExpressionFastTranslate(struct s_assenv *ae, char **ptr_expr, int fullrepla
 				break;
 			default:
 				startvar=idx;
-				while (ae->AutomateExpressionValidChar[((int)c)&0xFF]) {
+				if (ae->AutomateExpressionValidCharFirst[((int)c)&0xFF]) {
 					varbuffer[ivar++]=c;
 					StateMachineResizeBuffer(&varbuffer,ivar,&maxivar);
 					idx++;
 					c=expr[idx];
+					while (ae->AutomateExpressionValidChar[((int)c)&0xFF]) {
+						varbuffer[ivar++]=c;
+						StateMachineResizeBuffer(&varbuffer,ivar,&maxivar);
+						idx++;
+						c=expr[idx];
+					}
 				}
 				varbuffer[ivar]=0;
 				if (!ivar) {
@@ -3214,23 +3228,41 @@ int EDSK_getdirid(struct s_edsk_wrapper *curwrap) {
 	}
 	return -1;
 }
-char *MakeAMSDOS_name(char *filename)
+char *MakeAMSDOS_name(struct s_assenv *ae, char *filename)
 {
 	#undef FUNC
 	#define FUNC "MakeAMSDOS_name"
 
 	static char amsdos_name[12];
 	int i,ia;
+	char *pp;
 
-	for (i=0;i<11;i++) amsdos_name[i]=0x20;
-	i=0;while (filename[i]!=0 && filename[i]!='.' && i<8) {amsdos_name[i]=filename[i];i++;}
-	while (filename[i]!=0 && filename[i]!='.') i++;
+	/* warning */
+	if (strlen(filename)>12) {
+		rasm_printf(ae,"Warning - filename [%s] too long for AMSDOS, will be truncated\n",filename);
+	} else if ((pp=strchr(filename,'.'))!=NULL) {
+		if (pp-filename>8) {
+			rasm_printf(ae,"Warning - filename [%s] too long for AMSDOS, will be truncated\n",filename);
+		}
+	}
+	/* copy filename */
+	for (i=0;filename[i]!=0 && filename[i]!='.' && i<8;i++) {
+		amsdos_name[i]=toupper(filename[i]);
+	}
+	/* fill with spaces */
+	for (ia=i;ia<8;ia++) {
+		amsdos_name[ia]=0x20;
+	}
+	/* looking for extension */
+	for (;filename[i]!=0 && filename[i]!='.';i++);
+	/* then copy it if any */
 	if (filename[i]=='.') {
-		i++;ia=0;
-		while (filename[i]!=0 && ia<3) amsdos_name[8+ia++]=filename[i++];
+		i++;
+		for (ia=0;filename[i]!=0 && ia<3;ia++) {
+			amsdos_name[8+ia]=toupper(filename[i++]);
+		}
 	}
 	amsdos_name[11]=0;
-//printf("[%s]->[%s]\n",filename,amsdos_name);
 	return amsdos_name;
 }
 
@@ -3505,18 +3537,18 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,int facenumber, char *fi
 	/* update struct */
 	size=insize+128;
 	data=MemMalloc(size);
-	memcpy(amsdos_name,MakeAMSDOS_name(filename),11);
+	memcpy(amsdos_name,MakeAMSDOS_name(ae,filename),11);
 	memcpy(data,MakeAMSDOSHeader(offset,offset+insize,amsdos_name),128);
 	memcpy(data+128,indata,insize);
 	/* overwrite check */
 	for (i=0;i<curwrap->nbentry;i++) {
 		if (!strncmp(curwrap->entry[i].filename,amsdos_name,11)) {
 			if (!ae->edskoverwrite) {
-				rasm_printf(ae,"Cannot save [%s] in edsk [%s] with overwrite disabled as the file already exists\n",filename,edskfilename);
+				rasm_printf(ae,"Error - Cannot save [%s] in edsk [%s] with overwrite disabled as the file already exists\n",amsdos_name,edskfilename);
+				MaxError(ae);
 				return 0;
 			} else {
 				/* overwriting previous file */
-				//printf("dbg: overwriting previous file entry [%s] in dsk\n",filename);
 				memset(&curwrap->entry[i],0xE5,sizeof(struct s_edsk_wrapper_entry));
 			}
 		}
@@ -3545,7 +3577,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,int facenumber, char *fi
 		if (filesize>16384) {
 			/* extended entry */
 			if ((ie=EDSK_getdirid(curwrap))==-1)  {
-				rasm_printf(ae,"FATAL ERROR edsk [%s] DIRECTORY FULL\n",edskfilename);
+				rasm_printf(ae,"Error - edsk [%s] DIRECTORY FULL\n",edskfilename);
 				MemFree(data);
 				return 0;
 			}
@@ -3553,7 +3585,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,int facenumber, char *fi
 			idxb=0;
 			for (i=0;i<16;i++) {
 				if ((ib=EDSK_getblockid(fb))==-1) {
-					rasm_printf(ae,"FATAL ERROR edsk [%s] DISK FULL\n",edskfilename);
+					rasm_printf(ae,"Error - edsk [%s] DISK FULL\n",edskfilename);
 					MemFree(data);
 					return 0;
 				} else {
@@ -3576,7 +3608,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,int facenumber, char *fi
 		} else {
 			/* last entry */
 			if ((ie=EDSK_getdirid(curwrap))==-1)  {
-				rasm_printf(ae,"FATAL ERROR edsk [%s] DIRECTORY FULL\n",edskfilename);
+				rasm_printf(ae,"Error - edsk [%s] DIRECTORY FULL\n",edskfilename);
 				MemFree(data);
 				return 0;
 			}
@@ -3589,7 +3621,7 @@ int EDSK_addfile(struct s_assenv *ae,char *edskfilename,int facenumber, char *fi
 			idxb=0;
 			for (i=0;i<16 && filesize>0;i++) {
 				if ((ib=EDSK_getblockid(fb))==-1) {
-					rasm_printf(ae,"FATAL ERROR edsk [%s] DISK FULL\n",edskfilename);
+					rasm_printf(ae,"Error - edsk [%s] DISK FULL\n",edskfilename);
 					MemFree(data);
 					return 0;
 				} else {
@@ -3821,7 +3853,7 @@ void PopAllSave(struct s_assenv *ae)
 			rasm_printf(ae,"Write binary file %s (%d byte%s)\n",filename,size,size>1?"s":"");
 			FileRemoveIfExists(filename);
 			if (ae->save[is].amsdos) {
-				AmsdosHeader=MakeAMSDOSHeader(offset,offset+size,MakeAMSDOS_name(filename));
+				AmsdosHeader=MakeAMSDOSHeader(offset,offset+size,MakeAMSDOS_name(ae,filename));
 				FileWriteBinary(filename,AmsdosHeader,128);
 			}		
 			FileWriteBinary(filename,(char*)ae->mem[ae->save[is].ibank]+offset,size);
@@ -4809,47 +4841,51 @@ void _XOR(struct s_assenv *ae) {
 
 
 void _POP(struct s_assenv *ae) {
-	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
-		switch (GetCRC(ae->wl[ae->idx+1].w)) {
-			case CRC_AF:___output(ae,0xF1);break;
-			case CRC_BC:___output(ae,0xC1);break;
-			case CRC_DE:___output(ae,0xD1);break;
-			case CRC_HL:___output(ae,0xE1);break;
-			case CRC_IX:___output(ae,0xDD);___output(ae,0xE1);break;
-			case CRC_IY:___output(ae,0xFD);___output(ae,0xE1);break;
-			default:
-				rasm_printf(ae,"Error line %d - Use POP with AF,BC,DE,HL,IX,IY\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
-				MaxError(ae);
-		}
-		ae->idx++;
+	if (!ae->wl[ae->idx].t) {
+		do {
+			ae->idx++;
+			switch (GetCRC(ae->wl[ae->idx].w)) {
+				case CRC_AF:___output(ae,0xF1);break;
+				case CRC_BC:___output(ae,0xC1);break;
+				case CRC_DE:___output(ae,0xD1);break;
+				case CRC_HL:___output(ae,0xE1);break;
+				case CRC_IX:___output(ae,0xDD);___output(ae,0xE1);break;
+				case CRC_IY:___output(ae,0xFD);___output(ae,0xE1);break;
+				default:
+					rasm_printf(ae,"Error line %d - Use POP with AF,BC,DE,HL,IX,IY\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+					MaxError(ae);
+			}
+		} while (ae->wl[ae->idx].t!=1);
 	} else {
-		rasm_printf(ae,"[%s] Error line %d - POP need one parameter\n",ae->wl[ae->idx].l);
+		rasm_printf(ae,"[%s] Error line %d - POP need at least one parameter\n",ae->wl[ae->idx].l);
 		MaxError(ae);
 	}
 }
 void _PUSH(struct s_assenv *ae) {
-	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
-		switch (GetCRC(ae->wl[ae->idx+1].w)) {
-			case CRC_AF:___output(ae,0xF5);break;
-			case CRC_BC:___output(ae,0xC5);break;
-			case CRC_DE:___output(ae,0xD5);break;
-			case CRC_HL:___output(ae,0xE5);break;
-			case CRC_IX:___output(ae,0xDD);___output(ae,0xE5);break;
-			case CRC_IY:___output(ae,0xFD);___output(ae,0xE5);break;
-			default:
-				rasm_printf(ae,"Error line %d - Use PUSH with AF,BC,DE,HL,IX,IY\n",ae->wl[ae->idx].l);
-				MaxError(ae);
-		}
-		ae->idx++;
+	if (!ae->wl[ae->idx].t) {
+		do {
+			ae->idx++;
+			switch (GetCRC(ae->wl[ae->idx].w)) {
+				case CRC_AF:___output(ae,0xF5);break;
+				case CRC_BC:___output(ae,0xC5);break;
+				case CRC_DE:___output(ae,0xD5);break;
+				case CRC_HL:___output(ae,0xE5);break;
+				case CRC_IX:___output(ae,0xDD);___output(ae,0xE5);break;
+				case CRC_IY:___output(ae,0xFD);___output(ae,0xE5);break;
+				default:
+					rasm_printf(ae,"Error line %d - Use PUSH with AF,BC,DE,HL,IX,IY\n",ae->wl[ae->idx].l);
+					MaxError(ae);
+			}
+		} while (ae->wl[ae->idx].t!=1);
 	} else {
-		rasm_printf(ae,"[%s] Error line %d - PUSH need one parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		rasm_printf(ae,"[%s] Error line %d - PUSH need at least one parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
 	}
 }
 
 void _IM(struct s_assenv *ae) {
 	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
-		/* la valeur du paramÃ¨tre va dÃ©finir l'opcode du IM */
+		/* la valeur du parametre va definir l'opcode du IM */
 		___output(ae,0xED);
 		PushExpression(ae,ae->idx+1,E_EXPRESSION_IM);
 		ae->idx++;
@@ -5132,10 +5168,21 @@ void _RRD(struct s_assenv *ae) {
 
 
 void _NOP(struct s_assenv *ae) {
+	int o;
+
 	if (ae->wl[ae->idx].t) {
 		___output(ae,0x00);
+	} else if (!ae->wl[ae->idx].t && ae->wl[ae->idx].t==1) {
+		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
+		o=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
+		if (o>=0) {
+			while (o>0) {
+				___output(ae,0x00);
+				o--;
+			}
+		}
 	} else {
-		rasm_printf(ae,"[%s] Error line %d - NOP does not need parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		rasm_printf(ae,"[%s] Error line %d - NOP is supposed to be used without parameter or with one optional parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
 	}
 }
@@ -5158,7 +5205,7 @@ void _EI(struct s_assenv *ae) {
 
 void _RST(struct s_assenv *ae) {
 	if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t!=2) {
-		/* la valeur du paramÃ¨tre va dÃ©finir l'opcode du RST */
+		/* la valeur du parametre va definir l'opcode du RST */
 		PushExpression(ae,ae->idx+1,E_EXPRESSION_RST);
 		ae->idx++;
 	} else {
@@ -5596,7 +5643,7 @@ void _LD(struct s_assenv *ae) {
 
 
 void _RLC(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x0);break;
@@ -5650,7 +5697,7 @@ void _RLC(struct s_assenv *ae) {
 }
 
 void _RRC(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x8);break;
@@ -5705,7 +5752,7 @@ void _RRC(struct s_assenv *ae) {
 
 
 void _RL(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x10);break;
@@ -5759,7 +5806,7 @@ void _RL(struct s_assenv *ae) {
 }
 
 void _RR(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x18);break;
@@ -5817,7 +5864,7 @@ void _RR(struct s_assenv *ae) {
 
 
 void _SLA(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x20);break;
@@ -5871,7 +5918,7 @@ void _SLA(struct s_assenv *ae) {
 }
 
 void _SRA(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x28);break;
@@ -5926,7 +5973,7 @@ void _SRA(struct s_assenv *ae) {
 
 
 void _SLL(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x30);break;
@@ -5980,7 +6027,7 @@ void _SLL(struct s_assenv *ae) {
 }
 
 void _SRL(struct s_assenv *ae) {
-	/* on check qu'il y a un ou deux paramÃ¨tres */
+	/* on check qu'il y a un ou deux parametres */
 	if (ae->wl[ae->idx+1].t==1) {
 		switch (GetCRC(ae->wl[ae->idx+1].w)) {
 			case CRC_B:___output(ae,0xCB);___output(ae,0x38);break;
@@ -6101,7 +6148,7 @@ void _BIT(struct s_assenv *ae) {
 
 void _RES(struct s_assenv *ae) {
 	int o;
-	/* on check qu'il y a deux ou trois paramÃ¨tres */
+	/* on check qu'il y a deux ou trois parametres */
 	ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 	o=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
 	if (o<0 || o>7) {
@@ -6166,7 +6213,7 @@ void _RES(struct s_assenv *ae) {
 
 void _SET(struct s_assenv *ae) {
 	int o;
-	/* on check qu'il y a deux ou trois paramÃ¨tres */
+	/* on check qu'il y a deux ou trois parametres */
 	ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 	o=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
 	if (o<0 || o>7) {
@@ -7465,12 +7512,13 @@ void __UNTIL(struct s_assenv *ae) {
 			if (ae->wl[ae->idx].t==0 && ae->wl[ae->idx+1].t==1) {
 				ae->repeat[ae->ir-1].repeat_counter++;
 				ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
-				if (!ComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,2)) {
+				if (!ComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,2) && !ae->infinite) {
 					ae->idx=ae->repeat[ae->ir-1].start;
 					ae->repeat[ae->ir-1].cpt--; /* for local label */
 					/* refresh macro check index */
 					ae->imacropos=ae->repeat[ae->ir-1].maxim;
 				} else {
+					ae->infinite=0;
 					ae->ir--;
 					/* refresh macro check index */
 					if (ae->ir) ae->imacropos=ae->repeat[ae->ir-1].maxim;
@@ -7947,12 +7995,12 @@ void __HEXBIN(struct s_assenv *ae) {
 }
 
 /*
-save "nom",start,end -> save binary
-save "nom",start,end,AMSDOS -> save binary with Amsdos header
-save "nom",start,end,DSK,"dskname" -> save binary on DSK data format
-save "nom",start,end,DSK,"dskname",B -> select face
-save "nom",start,end,DSK,B -> current DSK, choose face
-save "nom",start,end,DSK -> current DSK, current face
+save "nom",start,size -> save binary
+save "nom",start,size,AMSDOS -> save binary with Amsdos header
+save "nom",start,size,DSK,"dskname" -> save binary on DSK data format
+save "nom",start,size,DSK,"dskname",B -> select face
+save "nom",start,size,DSK,B -> current DSK, choose face
+save "nom",start,size,DSK -> current DSK, current face
 */
 void __SAVE(struct s_assenv *ae) {
 	struct s_save cursave={0};
@@ -8172,6 +8220,10 @@ struct s_asm_keyword instruction[]={
 {"SETCPC",0,__SETCPC},
 {"SETCRTC",0,__SETCRTC},
 {"AMSDOS",0,__AMSDOS},
+{"OTD",0,_OUTD},
+{"OTI",0,_OUTI},
+{"SHL",0,_SLA},
+{"SHR",0,_SRL},
 {"",0,NULL}
 };
 
@@ -8214,9 +8266,11 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	___output=___internal_output;
 
 	/* init des automates */
+	InitAutomate(ae->AutomateHexa,AutomateHexaDefinition);
+	InitAutomate(ae->AutomateDigit,AutomateDigitDefinition);
 	InitAutomate(ae->AutomateValidLabel,AutomateValidLabelDefinition);
 	InitAutomate(ae->AutomateValidLabelFirst,AutomateValidLabelFirstDefinition);
-
+	InitAutomate(ae->AutomateExpressionValidCharFirst,AutomateExpressionValidCharFirstDefinition);
 	InitAutomate(ae->AutomateExpressionValidChar,AutomateExpressionValidCharDefinition);
 	ae->AutomateExpressionDecision['<']='<';
 	ae->AutomateExpressionDecision['>']='>';
@@ -8718,7 +8772,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				}
 
 				/**************************************************************
-				            snapshot additionnal chunks in v3+ only
+				            snapshot additional chunks in v3+ only
 				**************************************************************/
 				if (ae->snapshot.version>=3) {
 					/* export breakpoint */
@@ -8970,8 +9024,10 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 					if (ae->export_equ) {
 						for (i=0;i<ae->ialias;i++) {
-							sprintf(symbol_line,"%s #%04X\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
-							FileWriteLine(TMP_filename,symbol_line);
+							if (strcmp(ae->alias[i].alias,"IX") && strcmp(ae->alias[i].alias,"IY")) {
+								sprintf(symbol_line,"%s #%04X\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
+								FileWriteLine(TMP_filename,symbol_line);
+							}
 						}
 					}
 					FileWriteLineClose(TMP_filename);
@@ -8995,8 +9051,10 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 					if (ae->export_equ) {
 						for (i=0;i<ae->ialias;i++) {
-							sprintf(symbol_line,"%s EQU 0%04XH\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
-							FileWriteLine(TMP_filename,symbol_line);
+							if (strcmp(ae->alias[i].alias,"IX") && strcmp(ae->alias[i].alias,"IY")) {
+								sprintf(symbol_line,"%s EQU 0%04XH\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
+								FileWriteLine(TMP_filename,symbol_line);
+							}
 						}
 					}
 					FileWriteLineClose(TMP_filename);
@@ -9020,8 +9078,10 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 					if (ae->export_equ) {
 						for (i=0;i<ae->ialias;i++) {
-							sprintf(symbol_line,"%s #%X B0\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
-							FileWriteLine(TMP_filename,symbol_line);
+							if (strcmp(ae->alias[i].alias,"IX") && strcmp(ae->alias[i].alias,"IY")) {
+								sprintf(symbol_line,"%s #%X B0\n",ae->alias[i].alias,RoundComputeExpression(ae,ae->alias[i].translation,0,0,0));
+								FileWriteLine(TMP_filename,symbol_line);
+							}
 						}
 					}
 					FileWriteLineClose(TMP_filename);
@@ -9950,6 +10010,9 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 								} else if (strcmp(w+ispace,"XOR")==0) {
 									w[ispace]='^';
 									lw=ispace+1;
+								} else if (strcmp(w+ispace,"%")==0) {
+									w[ispace]='§';
+									lw=ispace+1;
 								}
 							}
 							ispace=lw;
@@ -9968,6 +10031,8 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 								wtmp=TxtStrDup("|");
 							} else if (strcmp(w,"XOR")==0) {
 								wtmp=TxtStrDup("^");
+							} else if (strcmp(w,"%")==0) {
+								wtmp=TxtStrDup("§");
 							} else {
 								wtmp=TxtStrDup(w);
 							}
@@ -10153,11 +10218,15 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 							w[lw++]=c;
 							StateMachineResizeBuffer(&w,lw,&mw);
 							w[lw]=0;
-							/* on autorise uniquement !=, ==, <=, >= et une seule fois */
+							/* on autorise uniquement !=, ==, <=, >= et une seule fois 
 							if (c!='=' || lw!=curw.e+1) {
 								rasm_printf(ae,"[%s] L%d - too much equality symbol '='\n",ae->filename[listing[l].ifile],listing[l].iline);
 								MaxError(ae);
 							}
+							
+							A l'avenir on ne notera que les affectations...
+							
+							*/
 						}
 					} else {
 						if (!wordlist[nbword-1].t) {
@@ -10732,7 +10801,7 @@ void Usage(int help)
 		printf("-ss export symbols in the snapshot (SYMB chunk for ACE)\n");
 		printf("-l  <labelfile> import symbol file (winape,pasmo,rasm)\n");
 		printf("-eb export breakpoints\n");
-		printf("SYMBOLS ADDITIONNAL OPTIONS:\n");
+		printf("SYMBOLS ADDITIONAL OPTIONS:\n");
 		printf("-sl export also local symbol\n");
 		printf("-sv export also variables symbol\n");
 		printf("-sq export also EQU symbol\n");

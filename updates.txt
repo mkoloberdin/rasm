@@ -1,3 +1,17 @@
+update v0.75
+- newer and faster expression calculator without limitations of comparisons
+- % may be used as modulo (still used for binary values)
+- Intel hexa & binary style support
+- Binary prefix 0b fixed
+- does not export IX and IY anymore in symbol files
+- better error messages when calculating expressions
+- boolean operators && and ||
+- PUSH & POP may have more than one register in parameters
+- NOP may be multiplied specifying a number of repetition in parameter
+- alias <> for != comparison operator
+- filenames are forced to upper case when saved to EDSK
+- Infinite loop detection won't go to infinite loop anymore ^_^
+
 update v0.74
 - usage of snapshot directives forces snapshot output
 - try to load .asm or .Z80 file if filename given is not found and has no extension
