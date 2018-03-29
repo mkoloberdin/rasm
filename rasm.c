@@ -1,6 +1,6 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.75"
-#define PROGRAM_DATE      "xx/03/2018"
+#define PROGRAM_VERSION   "0.77"
+#define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
 #define RASM_VERSION PROGRAM_NAME" v"PROGRAM_VERSION
@@ -33,15 +33,15 @@ arising from,  out of  or in connection  with  the software  or  the  use  or  o
 Software. »
 -----------------------------------------------------------------------------------------------------
 GCC compilation:
-cc rasm_v075.c -O2 -lm -lrt
+cc rasm_v077.c -O2 -lm -lrt
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v075.c -O2
+cl.exe rasm_v077.c -O2
 
 MorphOS compilation (ixemul):
-ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v075.c
+ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v077.c
 strip rasm
 */
 
@@ -1776,7 +1776,6 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	/* parser legacy */
 	static char *varbuffer=NULL;
 	static int ivar=0,maxivar=1;
-	int trigger=0,lowflag=0;
 	int idx=0,crc,icheck,is_binary;
 	char c;
 	/* backup alias replace */
@@ -1854,12 +1853,10 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	while ((c=zeexpression[idx])!=0) {
 		switch (c) {
 			/* parenthesis */
-			case '(':
-				allow_minus_as_sign=1;
-				break;
 			case ')':
 				allow_minus_as_sign=0;
 				break;
+			case '(':
 			/* operator detection */
 			case '*':
 			case '/':
@@ -1962,6 +1959,12 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 						case '&':
 						case '(':
 						case ')':
+						case '=':
+						case '<':
+						case '>':
+						case '!':
+						case '[':
+						case ']':
 							if (is_binary) is_binary=2; else is_binary=-1;
 							break;
 						default:
@@ -2050,9 +2053,6 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				
 				default:rasm_printf(ae,"[%s] Error line %d - expression [%s] - unknown operator\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
 						MaxError(ae);
-			}
-			if (ae->maxam) {
-				stackelement.priority=0;
 			}
 			/* stackelement.value isn't used */
 		} else {
@@ -2429,55 +2429,18 @@ printf("---- token stack ------\n");
 printf("----------\n");
 #endif
 
+	/* no priority with maxam */
+	if (ae->maxam) {
+		for (itoken=0;itoken<nbtokenstack;itoken++) {
+			tokenstack[itoken].priority=0;
+		}
+	}
 	for (itoken=0;itoken<nbtokenstack;itoken++) {
 		switch (tokenstack[itoken].operator) {
 			case E_COMPUTE_OPERATION_PUSH_DATASTC:
 				ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&tokenstack[itoken],sizeof(stackelement));
 				break;
-			case E_COMPUTE_OPERATION_SIN:
-			case E_COMPUTE_OPERATION_COS:
-			case E_COMPUTE_OPERATION_INT:
-			case E_COMPUTE_OPERATION_FLOOR:
-			case E_COMPUTE_OPERATION_ABS:
-			case E_COMPUTE_OPERATION_LN:
-			case E_COMPUTE_OPERATION_LOG10:
-			case E_COMPUTE_OPERATION_SQRT:
-			case E_COMPUTE_OPERATION_ASIN:
-			case E_COMPUTE_OPERATION_ACOS:
-			case E_COMPUTE_OPERATION_ATAN:
-			case E_COMPUTE_OPERATION_EXP:
-			case E_COMPUTE_OPERATION_LOW:
-			case E_COMPUTE_OPERATION_HIGH:
 			case E_COMPUTE_OPERATION_OPEN:
-				ObjectArrayAddDynamicValueConcat((void **)&operatorstack,&nboperatorstack,&maxoperatorstack,&tokenstack[itoken],sizeof(stackelement));
-				break;
-			case E_COMPUTE_OPERATION_ADD:
-			case E_COMPUTE_OPERATION_SUB:
-			case E_COMPUTE_OPERATION_DIV:
-			case E_COMPUTE_OPERATION_MUL:
-			case E_COMPUTE_OPERATION_AND:
-			case E_COMPUTE_OPERATION_OR:
-			case E_COMPUTE_OPERATION_MOD:
-			case E_COMPUTE_OPERATION_XOR:
-			case E_COMPUTE_OPERATION_SHL:
-			case E_COMPUTE_OPERATION_SHR:
-			case E_COMPUTE_OPERATION_BAND:
-			case E_COMPUTE_OPERATION_BOR:
-			case E_COMPUTE_OPERATION_LOWER:
-			case E_COMPUTE_OPERATION_GREATER:
-			case E_COMPUTE_OPERATION_EQUAL:
-			case E_COMPUTE_OPERATION_LOWEREQ:
-			case E_COMPUTE_OPERATION_GREATEREQ:
-				o2=nboperatorstack-1;
-				while (o2>=0 && operatorstack[o2].operator!=E_COMPUTE_OPERATION_OPEN) {
-					if (tokenstack[itoken].priority>=operatorstack[o2].priority || operatorstack[o2].operator>=E_COMPUTE_OPERATION_SIN) {
-						ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[o2],sizeof(stackelement));
-						nboperatorstack--;
-						o2--;
-					} else {
-						break;
-					}
-				}
 				ObjectArrayAddDynamicValueConcat((void **)&operatorstack,&nboperatorstack,&maxoperatorstack,&tokenstack[itoken],sizeof(stackelement));
 				break;
 			case E_COMPUTE_OPERATION_CLOSE:
@@ -2509,15 +2472,57 @@ printf("----------\n");
 					nboperatorstack--;
 				}
 				break;
+			case E_COMPUTE_OPERATION_ADD:
+			case E_COMPUTE_OPERATION_SUB:
+			case E_COMPUTE_OPERATION_DIV:
+			case E_COMPUTE_OPERATION_MUL:
+			case E_COMPUTE_OPERATION_AND:
+			case E_COMPUTE_OPERATION_OR:
+			case E_COMPUTE_OPERATION_MOD:
+			case E_COMPUTE_OPERATION_XOR:
+			case E_COMPUTE_OPERATION_SHL:
+			case E_COMPUTE_OPERATION_SHR:
+			case E_COMPUTE_OPERATION_BAND:
+			case E_COMPUTE_OPERATION_BOR:
+			case E_COMPUTE_OPERATION_LOWER:
+			case E_COMPUTE_OPERATION_GREATER:
+			case E_COMPUTE_OPERATION_EQUAL:
+			case E_COMPUTE_OPERATION_LOWEREQ:
+			case E_COMPUTE_OPERATION_GREATEREQ:
+				o2=nboperatorstack-1;
+				while (o2>=0 && operatorstack[o2].operator!=E_COMPUTE_OPERATION_OPEN) {
+					if (tokenstack[itoken].priority>=operatorstack[o2].priority || operatorstack[o2].operator>=E_COMPUTE_OPERATION_SIN) {
+						ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[o2],sizeof(stackelement));
+						nboperatorstack--;
+						o2--;
+					} else {
+						break;
+					}
+				}
+				ObjectArrayAddDynamicValueConcat((void **)&operatorstack,&nboperatorstack,&maxoperatorstack,&tokenstack[itoken],sizeof(stackelement));
+				break;
+			case E_COMPUTE_OPERATION_SIN:
+			case E_COMPUTE_OPERATION_COS:
+			case E_COMPUTE_OPERATION_INT:
+			case E_COMPUTE_OPERATION_FLOOR:
+			case E_COMPUTE_OPERATION_ABS:
+			case E_COMPUTE_OPERATION_LN:
+			case E_COMPUTE_OPERATION_LOG10:
+			case E_COMPUTE_OPERATION_SQRT:
+			case E_COMPUTE_OPERATION_ASIN:
+			case E_COMPUTE_OPERATION_ACOS:
+			case E_COMPUTE_OPERATION_ATAN:
+			case E_COMPUTE_OPERATION_EXP:
+			case E_COMPUTE_OPERATION_LOW:
+			case E_COMPUTE_OPERATION_HIGH:
+				ObjectArrayAddDynamicValueConcat((void **)&operatorstack,&nboperatorstack,&maxoperatorstack,&tokenstack[itoken],sizeof(stackelement));
+				break;
 			default:break;
 		}
 	}
 	/* pop remaining operators */
-	o2=nboperatorstack-1;
-	while (o2>=0) {
-		ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[o2],sizeof(stackelement));
-		nboperatorstack--;
-		o2--;
+	while (nboperatorstack>0) {
+		ObjectArrayAddDynamicValueConcat((void **)&computestack,&nbcomputestack,&maxcomputestack,&operatorstack[--nboperatorstack],sizeof(stackelement));
 	}
 	
 	/********************************************
@@ -2529,6 +2534,9 @@ printf("----------\n");
 		if (ae->as80) workinterval=0xFFFFFFFF; else workinterval=0xFFFF;
 		for (i=0;i<nbcomputestack;i++) {
 			switch (computestack[i].operator) {
+				/************************************************
+				  c a s e s   s h o u l d    b e    s o r t e d
+				************************************************/
 				case E_COMPUTE_OPERATION_PUSH_DATASTC:
 					if (maccu<=paccu) {
 						maccu=16+paccu;
@@ -2536,6 +2544,8 @@ printf("----------\n");
 					}
 					accu[paccu]=computestack[i].value;paccu++;
 					break;
+				case E_COMPUTE_OPERATION_OPEN:
+				case E_COMPUTE_OPERATION_CLOSE:/* cannot happend */ break;
 				case E_COMPUTE_OPERATION_ADD:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]+(int)accu[paccu-1])&workinterval;paccu--;break;
 				case E_COMPUTE_OPERATION_SUB:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]-(int)accu[paccu-1])&workinterval;paccu--;break;
 				case E_COMPUTE_OPERATION_MUL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]*(int)accu[paccu-1])&workinterval;paccu--;break;
@@ -2548,13 +2558,18 @@ printf("----------\n");
 				case E_COMPUTE_OPERATION_SHR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2])>>((int)accu[paccu-1]);paccu--;break;				
 				case E_COMPUTE_OPERATION_BAND:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&&(int)accu[paccu-1])&workinterval;paccu--;break;
 				case E_COMPUTE_OPERATION_BOR:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]||(int)accu[paccu-1])&workinterval;paccu--;break;
+				/* comparison */
+				case E_COMPUTE_OPERATION_LOWER:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)<((int)accu[paccu-1]&workinterval);paccu--;break;
+				case E_COMPUTE_OPERATION_LOWEREQ:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)<=((int)accu[paccu-1]&workinterval);paccu--;break;
+				case E_COMPUTE_OPERATION_EQUAL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)==((int)accu[paccu-1]&workinterval);paccu--;break;
+				case E_COMPUTE_OPERATION_GREATER:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)>((int)accu[paccu-1]&workinterval);paccu--;break;
+				case E_COMPUTE_OPERATION_GREATEREQ:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)>=((int)accu[paccu-1]&workinterval);paccu--;break;
+				/* functions */
 				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=(int)sin(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_COS:if (paccu>0) accu[paccu-1]=(int)cos(accu[paccu-1]*3.1415926545/180.0);break;
 				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=(int)asin(accu[paccu-1])*180.0/3.1415926545;break;
 				case E_COMPUTE_OPERATION_ACOS:if (paccu>0) accu[paccu-1]=(int)acos(accu[paccu-1])*180.0/3.1415926545;break;
 				case E_COMPUTE_OPERATION_ATAN:if (paccu>0) accu[paccu-1]=(int)atan(accu[paccu-1])*180.0/3.1415926545;break;
-				case E_COMPUTE_OPERATION_LOW:if (paccu>0) accu[paccu-1]=((int)accu[paccu-1])&0xFF;break;
-				case E_COMPUTE_OPERATION_HIGH:if (paccu>0) accu[paccu-1]=(((int)accu[paccu-1])&0xFF00)>>8;break;
 				case E_COMPUTE_OPERATION_INT:break;
 				case E_COMPUTE_OPERATION_FLOOR:if (paccu>0) accu[paccu-1]=(int)floor(accu[paccu-1])&workinterval;break;
 				case E_COMPUTE_OPERATION_ABS:if (paccu>0) accu[paccu-1]=(int)fabs(accu[paccu-1])&workinterval;break;
@@ -2562,6 +2577,8 @@ printf("----------\n");
 				case E_COMPUTE_OPERATION_LN:if (paccu>0) accu[paccu-1]=(int)log(accu[paccu-1])&workinterval;break;
 				case E_COMPUTE_OPERATION_LOG10:if (paccu>0) accu[paccu-1]=(int)log10(accu[paccu-1])&workinterval;break;
 				case E_COMPUTE_OPERATION_SQRT:if (paccu>0) accu[paccu-1]=(int)sqrt(accu[paccu-1])&workinterval;break;
+				case E_COMPUTE_OPERATION_LOW:if (paccu>0) accu[paccu-1]=((int)accu[paccu-1])&0xFF;break;
+				case E_COMPUTE_OPERATION_HIGH:if (paccu>0) accu[paccu-1]=(((int)accu[paccu-1])&0xFF00)>>8;break;
 				default:rasm_printf(ae,"invalid computing state! (%d)\n",computestack[i].operator);
 			}
 			if (!paccu) {
@@ -2601,6 +2618,8 @@ printf("----------\n");
 					}
 					accu[paccu]=computestack[i].value;paccu++;
 					break;
+				case E_COMPUTE_OPERATION_OPEN:
+				case E_COMPUTE_OPERATION_CLOSE:/* cannot happend */ break;
 				case E_COMPUTE_OPERATION_ADD:if (paccu>1) accu[paccu-2]+=accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_SUB:if (paccu>1) accu[paccu-2]-=accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_MUL:if (paccu>1) accu[paccu-2]*=accu[paccu-1];paccu--;break;
@@ -2613,26 +2632,27 @@ printf("----------\n");
 				case E_COMPUTE_OPERATION_SHR:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))>>((int)floor(accu[paccu-1]+0.5));paccu--;break;				
 				case E_COMPUTE_OPERATION_BAND:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))&&((int)floor(accu[paccu-1]+0.5));paccu--;break;
 				case E_COMPUTE_OPERATION_BOR:if (paccu>1) accu[paccu-2]=((int)floor(accu[paccu-2]+0.5))||((int)floor(accu[paccu-1]+0.5));paccu--;break;
-				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=sin(accu[paccu-1]*3.1415926545/180.0);break;
-				case E_COMPUTE_OPERATION_COS:if (paccu>0) accu[paccu-1]=cos(accu[paccu-1]*3.1415926545/180.0);break;
-				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=asin(accu[paccu-1])*180.0/3.1415926545;break;
-				case E_COMPUTE_OPERATION_ACOS:if (paccu>0) accu[paccu-1]=acos(accu[paccu-1])*180.0/3.1415926545;break;
-				case E_COMPUTE_OPERATION_ATAN:if (paccu>0) accu[paccu-1]=atan(accu[paccu-1])*180.0/3.1415926545;break;
-				case E_COMPUTE_OPERATION_INT:if (paccu>0) accu[paccu-1]=floor(accu[paccu-1]+0.5);break;
-				case E_COMPUTE_OPERATION_LOW:if (paccu>0) accu[paccu-1]=((int)floor(accu[paccu-1]+0.5))&0xFF;break;
-				case E_COMPUTE_OPERATION_HIGH:if (paccu>0) accu[paccu-1]=(((int)floor(accu[paccu-1]+0.5))&0xFF00)>>8;break;
-				case E_COMPUTE_OPERATION_FLOOR:if (paccu>0) accu[paccu-1]=floor(accu[paccu-1]);break;
-				case E_COMPUTE_OPERATION_ABS:if (paccu>0) accu[paccu-1]=fabs(accu[paccu-1]);break;
-				case E_COMPUTE_OPERATION_EXP:if (paccu>0) accu[paccu-1]=exp(accu[paccu-1]);break;
-				case E_COMPUTE_OPERATION_LN:if (paccu>0) accu[paccu-1]=log(accu[paccu-1]);break;
-				case E_COMPUTE_OPERATION_LOG10:if (paccu>0) accu[paccu-1]=log10(accu[paccu-1]);break;
-				case E_COMPUTE_OPERATION_SQRT:if (paccu>0) accu[paccu-1]=sqrt(accu[paccu-1]);break;
 				/* comparison */
 				case E_COMPUTE_OPERATION_LOWER:if (paccu>1) accu[paccu-2]=accu[paccu-2]<accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_LOWEREQ:if (paccu>1) accu[paccu-2]=accu[paccu-2]<=accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_EQUAL:if (paccu>1) accu[paccu-2]=accu[paccu-2]==accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_GREATER:if (paccu>1) accu[paccu-2]=accu[paccu-2]>accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_GREATEREQ:if (paccu>1) accu[paccu-2]=accu[paccu-2]>=accu[paccu-1];paccu--;break;
+				/* functions */
+				case E_COMPUTE_OPERATION_SIN:if (paccu>0) accu[paccu-1]=sin(accu[paccu-1]*3.1415926545/180.0);break;
+				case E_COMPUTE_OPERATION_COS:if (paccu>0) accu[paccu-1]=cos(accu[paccu-1]*3.1415926545/180.0);break;
+				case E_COMPUTE_OPERATION_ASIN:if (paccu>0) accu[paccu-1]=asin(accu[paccu-1])*180.0/3.1415926545;break;
+				case E_COMPUTE_OPERATION_ACOS:if (paccu>0) accu[paccu-1]=acos(accu[paccu-1])*180.0/3.1415926545;break;
+				case E_COMPUTE_OPERATION_ATAN:if (paccu>0) accu[paccu-1]=atan(accu[paccu-1])*180.0/3.1415926545;break;
+				case E_COMPUTE_OPERATION_INT:if (paccu>0) accu[paccu-1]=floor(accu[paccu-1]+0.5);break;
+				case E_COMPUTE_OPERATION_FLOOR:if (paccu>0) accu[paccu-1]=floor(accu[paccu-1]);break;
+				case E_COMPUTE_OPERATION_ABS:if (paccu>0) accu[paccu-1]=fabs(accu[paccu-1]);break;
+				case E_COMPUTE_OPERATION_EXP:if (paccu>0) accu[paccu-1]=exp(accu[paccu-1]);break;
+				case E_COMPUTE_OPERATION_LN:if (paccu>0) accu[paccu-1]=log(accu[paccu-1]);break;
+				case E_COMPUTE_OPERATION_LOG10:if (paccu>0) accu[paccu-1]=log10(accu[paccu-1]);break;
+				case E_COMPUTE_OPERATION_SQRT:if (paccu>0) accu[paccu-1]=sqrt(accu[paccu-1]);break;
+				case E_COMPUTE_OPERATION_LOW:if (paccu>0) accu[paccu-1]=((int)floor(accu[paccu-1]+0.5))&0xFF;break;
+				case E_COMPUTE_OPERATION_HIGH:if (paccu>0) accu[paccu-1]=(((int)floor(accu[paccu-1]+0.5))&0xFF00)>>8;break;
 				default:rasm_printf(ae,"invalid computing state! (%d)\n",computestack[i].operator);
 			}
 			if (!paccu) {
@@ -2772,10 +2792,6 @@ double ComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int 
 				MaxError(ae);
 				ae->infinite=1;
 				return 0;
-			} else {
-				/* compute */
-				v=ComputeExpressionCore(ae,expr,ptr,didx);
-				return v;
 			}
 	}
 
