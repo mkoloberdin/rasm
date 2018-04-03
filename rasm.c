@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.77"
+#define PROGRAM_VERSION   "0.78"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -6294,35 +6294,37 @@ void _SET(struct s_assenv *ae) {
 
 void _DEFS(struct s_assenv *ae) {
 	int i,r,v;
-	if (!ae->wl[ae->idx].t && !ae->wl[ae->idx+1].t && ae->wl[ae->idx+2].t==1) {
-		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
-		ExpressionFastTranslate(ae,&ae->wl[ae->idx+2].w,0);
-		r=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
-		v=RoundComputeExpressionCore(ae,ae->wl[ae->idx+2].w,ae->codeadr,0);
-		if (r<0) {
-			rasm_printf(ae,"[%s] Error line %d - DEFS size must be greater or equal to zero\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
-			MaxError(ae);
-		}
-		for (i=0;i<r;i++) {
-			___output(ae,v);
-		}
-		ae->idx+=2;
-	} else if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
-		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
-		r=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
-		v=0;
-		if (r<0) {
-			rasm_printf(ae,"[%s] Error line %d - DEFS size must be greater or equal to zero\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
-			MaxError(ae);
-		}
-		for (i=0;i<r;i++) {
-			___output(ae,v);
-		}
-		ae->idx++;
-	} else {
+	if (ae->wl[ae->idx].t) {
 		rasm_printf(ae,"[%s] Error line %d - Syntax is DEFS repeat,value or DEFS repeat\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
-	}
+	} else do {
+		ae->idx++;
+		if (!ae->wl[ae->idx].t) {
+			ExpressionFastTranslate(ae,&ae->wl[ae->idx].w,0);
+			ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
+			r=RoundComputeExpressionCore(ae,ae->wl[ae->idx].w,ae->codeadr,0);
+			v=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
+			if (r<0) {
+				rasm_printf(ae,"[%s] Error line %d - DEFS size must be greater or equal to zero\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+				MaxError(ae);
+			}
+			for (i=0;i<r;i++) {
+				___output(ae,v);
+			}
+			ae->idx++;
+		} else if (ae->wl[ae->idx].t==1) {
+			ExpressionFastTranslate(ae,&ae->wl[ae->idx].w,0);
+			r=RoundComputeExpressionCore(ae,ae->wl[ae->idx].w,ae->codeadr,0);
+			v=0;
+			if (r<0) {
+				rasm_printf(ae,"[%s] Error line %d - DEFS size must be greater or equal to zero\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+				MaxError(ae);
+			}
+			for (i=0;i<r;i++) {
+				___output(ae,v);
+			}
+		}
+	} while (!ae->wl[ae->idx].t);
 }
 
 void _STR(struct s_assenv *ae) {
@@ -8147,6 +8149,8 @@ struct s_asm_keyword instruction[]={
 {"EI",0,_EI},
 {"NOP",0,_NOP},
 {"DEFB",0,_DEFB},
+{"DEFM",0,_DEFB},
+{"DM",0,_DEFB},
 {"DB",0,_DEFB},
 {"DEFW",0,_DEFW},
 {"DW",0,_DEFW},

@@ -1,3 +1,7 @@
+update v0.78
+- DEFS can handle multiple repetition schemas
+- alias DM & DEFM for DEFB
+
 update v0.77
 - even faster expression calculation
 - maxam & AS80 comparison operators are back
