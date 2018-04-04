@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.78"
+#define PROGRAM_VERSION   "0.79"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -111,6 +111,7 @@ E_COMPUTE_OPERATION_BOR,
 E_COMPUTE_OPERATION_LOWER,
 E_COMPUTE_OPERATION_GREATER,
 E_COMPUTE_OPERATION_EQUAL,
+E_COMPUTE_OPERATION_NOTEQUAL,
 E_COMPUTE_OPERATION_LOWEREQ,
 E_COMPUTE_OPERATION_GREATEREQ,
 /* math functions */
@@ -1887,6 +1888,9 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				if (zeexpression[idx+1]=='=') {
 					idx++;
 					c='k'; // boolean LOWEREQ
+				} else if (zeexpression[idx+1]=='>') {
+					idx++;
+					c='n'; // boolean NOTEQUAL
 				} else {
 					c='l';
 				}
@@ -1898,6 +1902,16 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					c='g'; // boolean GREATEREQ
 				} else {
 					c='h';
+				}
+				break;
+			case '!':
+				allow_minus_as_sign=1;
+				if (zeexpression[idx+1]=='=') {
+					idx++;
+					c='n'; // boolean NOTEQUAL
+				} else {
+					rasm_printf(ae,"[%s] Error line %d - ! sign must be followed by = [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+					MaxError(ae);
 				}
 				break;
 			case '=':
@@ -2002,7 +2016,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				}
 				varbuffer[ivar]=0;
 				if (!ivar) {
-					rasm_printf(ae,"[%s] Error line %d - invalid char in expression [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),zeexpression);
+					rasm_printf(ae,"[%s] Error line %d - invalid char (%d=%c) in expression [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),c,c>31&&c<128?c:' ',zeexpression);
 					MaxError(ae);
 					if (!original) {
 						MemFree(zeexpression);
@@ -2038,6 +2052,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				case 'l':stackelement.operator=E_COMPUTE_OPERATION_LOWER;stackelement.priority=4;break;
 				case 'g':stackelement.operator=E_COMPUTE_OPERATION_GREATER;stackelement.priority=4;break;
 				case 'e':stackelement.operator=E_COMPUTE_OPERATION_EQUAL;stackelement.priority=4;break;
+				case 'n':stackelement.operator=E_COMPUTE_OPERATION_NOTEQUAL;stackelement.priority=4;break;
 				case 'k':stackelement.operator=E_COMPUTE_OPERATION_LOWEREQ;stackelement.priority=4;break;
 				case 'h':stackelement.operator=E_COMPUTE_OPERATION_GREATEREQ;stackelement.priority=4;break;
 				/* priority 5 */
@@ -2487,6 +2502,7 @@ printf("----------\n");
 			case E_COMPUTE_OPERATION_LOWER:
 			case E_COMPUTE_OPERATION_GREATER:
 			case E_COMPUTE_OPERATION_EQUAL:
+			case E_COMPUTE_OPERATION_NOTEQUAL:
 			case E_COMPUTE_OPERATION_LOWEREQ:
 			case E_COMPUTE_OPERATION_GREATEREQ:
 				o2=nboperatorstack-1;
@@ -2562,6 +2578,7 @@ printf("----------\n");
 				case E_COMPUTE_OPERATION_LOWER:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)<((int)accu[paccu-1]&workinterval);paccu--;break;
 				case E_COMPUTE_OPERATION_LOWEREQ:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)<=((int)accu[paccu-1]&workinterval);paccu--;break;
 				case E_COMPUTE_OPERATION_EQUAL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)==((int)accu[paccu-1]&workinterval);paccu--;break;
+				case E_COMPUTE_OPERATION_NOTEQUAL:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)!=((int)accu[paccu-1]&workinterval);paccu--;break;
 				case E_COMPUTE_OPERATION_GREATER:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)>((int)accu[paccu-1]&workinterval);paccu--;break;
 				case E_COMPUTE_OPERATION_GREATEREQ:if (paccu>1) accu[paccu-2]=((int)accu[paccu-2]&workinterval)>=((int)accu[paccu-1]&workinterval);paccu--;break;
 				/* functions */
@@ -2636,6 +2653,7 @@ printf("----------\n");
 				case E_COMPUTE_OPERATION_LOWER:if (paccu>1) accu[paccu-2]=accu[paccu-2]<accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_LOWEREQ:if (paccu>1) accu[paccu-2]=accu[paccu-2]<=accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_EQUAL:if (paccu>1) accu[paccu-2]=accu[paccu-2]==accu[paccu-1];paccu--;break;
+				case E_COMPUTE_OPERATION_NOTEQUAL:if (paccu>1) accu[paccu-2]=accu[paccu-2]!=accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_GREATER:if (paccu>1) accu[paccu-2]=accu[paccu-2]>accu[paccu-1];paccu--;break;
 				case E_COMPUTE_OPERATION_GREATEREQ:if (paccu>1) accu[paccu-2]=accu[paccu-2]>=accu[paccu-1];paccu--;break;
 				/* functions */

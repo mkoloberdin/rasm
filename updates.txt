@@ -1,3 +1,6 @@
+update v0.79
+- != operator is back in the new solver
+
 update v0.78
 - DEFS can handle multiple repetition schemas
 - alias DM & DEFM for DEFB
