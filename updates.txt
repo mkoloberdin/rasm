@@ -1,5 +1,9 @@
+update v0.80
+- bugfix operator > and >=
+- bugfix Maxam priorities
+
 update v0.79
-- != operator is back in the new solver
+- != operator is back with new solver
 
 update v0.78
 - DEFS can handle multiple repetition schemas

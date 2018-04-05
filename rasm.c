@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.79"
+#define PROGRAM_VERSION   "0.80"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -1899,9 +1899,9 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 				allow_minus_as_sign=1;
 				if (zeexpression[idx+1]=='=') {
 					idx++;
-					c='g'; // boolean GREATEREQ
+					c='h'; // boolean GREATEREQ
 				} else {
-					c='h';
+					c='g';
 				}
 				break;
 			case '!':
@@ -2447,7 +2447,19 @@ printf("----------\n");
 	/* no priority with maxam */
 	if (ae->maxam) {
 		for (itoken=0;itoken<nbtokenstack;itoken++) {
-			tokenstack[itoken].priority=0;
+			switch (tokenstack[itoken].operator) {
+			case E_COMPUTE_OPERATION_LOWER:
+			case E_COMPUTE_OPERATION_GREATER:
+			case E_COMPUTE_OPERATION_EQUAL:
+			case E_COMPUTE_OPERATION_NOTEQUAL:
+			case E_COMPUTE_OPERATION_LOWEREQ:
+			case E_COMPUTE_OPERATION_GREATEREQ:
+				tokenstack[itoken].priority=666;
+				break;
+			default:
+				tokenstack[itoken].priority=0;
+				break;
+			}
 		}
 	}
 	for (itoken=0;itoken<nbtokenstack;itoken++) {
