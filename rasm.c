@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.80"
+#define PROGRAM_VERSION   "0.81"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -556,6 +556,7 @@ struct s_assenv {
 	int nbedskwrapper,maxedskwrapper;
 	int edskoverwrite;
 	int checkmode;
+	int stop;
 };
 
 struct s_asm_keyword {
@@ -2444,20 +2445,28 @@ printf("---- token stack ------\n");
 printf("----------\n");
 #endif
 
-	/* no priority with maxam */
+	/* maxam HAS priorities */
 	if (ae->maxam) {
 		for (itoken=0;itoken<nbtokenstack;itoken++) {
 			switch (tokenstack[itoken].operator) {
+			case E_COMPUTE_OPERATION_OPEN:
+			case E_COMPUTE_OPERATION_CLOSE:
+				/* keep highest priority */
+				break;
+			case E_COMPUTE_OPERATION_BAND:
+			case E_COMPUTE_OPERATION_BOR:
+				tokenstack[itoken].priority=6128;
+				break;
 			case E_COMPUTE_OPERATION_LOWER:
 			case E_COMPUTE_OPERATION_GREATER:
 			case E_COMPUTE_OPERATION_EQUAL:
 			case E_COMPUTE_OPERATION_NOTEQUAL:
 			case E_COMPUTE_OPERATION_LOWEREQ:
 			case E_COMPUTE_OPERATION_GREATEREQ:
-				tokenstack[itoken].priority=666;
+				tokenstack[itoken].priority=664;
 				break;
 			default:
-				tokenstack[itoken].priority=0;
+				tokenstack[itoken].priority=464;
 				break;
 			}
 		}
@@ -7272,6 +7281,7 @@ void __STOP(struct s_assenv *ae) {
 	rasm_printf(ae,"stop assembling as requested\n");
 	while (ae->wl[ae->idx].t!=2) ae->idx++;
 	ae->idx--;
+	ae->stop=1;
 }
 
 void __PRINT(struct s_assenv *ae) {
@@ -9017,7 +9027,9 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 					}
 				}
 				if (maxmem-minmem<=0) {
-					rasm_printf(ae,"Warning: Not a single byte to output\n");
+					if (!ae->stop) {
+						rasm_printf(ae,"Warning: Not a single byte to output\n");
+					}
 				} else {
 					if (!ae->flux) {
 						rasm_printf(ae,"Write binary file %s (%d byte%s)\n",TMP_filename,maxmem-minmem,maxmem-minmem>1?"s":"");

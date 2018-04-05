@@ -1,3 +1,6 @@
+update v0.81
+- added special maxam priorities for parenthesis and boolean operators
+
 update v0.80
 - bugfix operator > and >=
 - bugfix Maxam priorities
