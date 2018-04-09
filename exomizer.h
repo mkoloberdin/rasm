@@ -1795,11 +1795,6 @@ search_nodep search_buffer(match_ctx ctx,       /* IN */
         /* slow way to get to the next node for cur */
         --len;
         ++best_copy_len;
-        if(snp_arr[len]->match == NULL)
-        {
-            LOG(LOG_ERROR, ("Found unreachable node at len %d.\n", len));
-        }
-
     }
     if(len > 0 && mp == NULL)
     {

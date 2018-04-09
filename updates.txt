@@ -1,3 +1,10 @@
+update v0.82
+- better infinite loop detection
+- bugfix while 0 loop (check and disable block)
+- repeat until internal counter harmonisation
+- alias SL1 for SLL instruction
+- remove CLang warnings on Linux
+
 update v0.81
 - added special maxam priorities for parenthesis and boolean operators
 
