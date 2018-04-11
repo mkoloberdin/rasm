@@ -1,3 +1,7 @@
+update v0.83
+- NOCODE output must increment current adress in all cases
+- new directives DR & DEFR to define REAL values (Amstrad firmware compatible)
+
 update v0.82
 - better infinite loop detection
 - bugfix while 0 loop (check and disable block)

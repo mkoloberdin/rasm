@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.82"
+#define PROGRAM_VERSION   "0.83"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "� 2017 BERGE Edouard (roudoudou) "
 
@@ -145,6 +145,7 @@ enum e_expression {
 	E_EXPRESSION_V16,
 	E_EXPRESSION_0V16,
 	E_EXPRESSION_0V32,
+	E_EXPRESSION_0VR,
 	E_EXPRESSION_IV8,
 	E_EXPRESSION_3V8,
 	E_EXPRESSION_IV16,
@@ -1217,7 +1218,7 @@ void ___internal_output_nocode(struct s_assenv *ae,unsigned char v)
 		ae->outputadr++;
 		ae->codeadr++;
 	} else {
-		rasm_printf(ae,"[%s] Error line %d - output exceed limit %d\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->maxptr);
+		rasm_printf(ae,"[%s] Error line %d - NOCODE output exceed limit %d\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->maxptr);
 		exit(3);
 	}
 }
@@ -1882,6 +1883,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		switch (c) {
 			/* parenthesis */
 			case ')':
+				/* next to a closing parenthesis, a minus is an operator */
 				allow_minus_as_sign=0;
 				break;
 			case '(':
@@ -3111,13 +3113,14 @@ void PushExpression(struct s_assenv *ae,int iw,enum e_expression zetype)
 			}
 			ae->codeadr-=startptr;
 		}
-		/* calcul adresse de référence et post-incrémentation pour sauter les data */
+		/* calcul adresse de reference et post-incrementation pour sauter les data */
 		switch (zetype) {
 			case E_EXPRESSION_J8:curexp.ptr=ae->codeadr-1;ae->outputadr++;ae->codeadr++;break;
 			case E_EXPRESSION_0V8:curexp.ptr=ae->codeadr;ae->outputadr++;ae->codeadr++;break;
 			case E_EXPRESSION_V8:curexp.ptr=ae->codeadr-1;ae->outputadr++;ae->codeadr++;break;
 			case E_EXPRESSION_0V16:curexp.ptr=ae->codeadr;ae->outputadr+=2;ae->codeadr+=2;break;
 			case E_EXPRESSION_0V32:curexp.ptr=ae->codeadr;ae->outputadr+=4;ae->codeadr+=4;break;
+			case E_EXPRESSION_0VR:curexp.ptr=ae->codeadr;ae->outputadr+=5;ae->codeadr+=5;break;
 			case E_EXPRESSION_V16:curexp.ptr=ae->codeadr-1;ae->outputadr+=2;ae->codeadr+=2;break;
 			case E_EXPRESSION_IV8:curexp.ptr=ae->codeadr-2;ae->outputadr++;ae->codeadr++;break;
 			case E_EXPRESSION_3V8:curexp.ptr=ae->codeadr-3;ae->outputadr++;ae->codeadr++;break;
@@ -3133,21 +3136,22 @@ void PushExpression(struct s_assenv *ae,int iw,enum e_expression zetype)
 		}
 	} else {
 		switch (zetype) {
-			case E_EXPRESSION_J8:
-			case E_EXPRESSION_0V8:
-			case E_EXPRESSION_V8:
-			case E_EXPRESSION_IV8:
-			case E_EXPRESSION_3V8:
-			case E_EXPRESSION_RST:
-			case E_EXPRESSION_IM:ae->outputadr++;ae->codeadr++;break;
-			case E_EXPRESSION_0V16:
-			case E_EXPRESSION_V16:
-			case E_EXPRESSION_IV16:ae->outputadr+=2;ae->codeadr+=2;break;
+			case E_EXPRESSION_J8:ae->outputadr++;ae->codeadr++;break;
+			case E_EXPRESSION_0V8:ae->outputadr++;ae->codeadr++;break;
+			case E_EXPRESSION_V8:ae->outputadr++;ae->codeadr++;break;
+			case E_EXPRESSION_0V16:ae->outputadr+=2;ae->codeadr+=2;break;
 			case E_EXPRESSION_0V32:ae->outputadr+=4;ae->codeadr+=4;break;
+			case E_EXPRESSION_0VR:ae->outputadr+=5;ae->codeadr+=5;break;
+			case E_EXPRESSION_V16:ae->outputadr+=2;ae->codeadr+=2;break;
+			case E_EXPRESSION_IV8:ae->outputadr++;ae->codeadr++;break;
+			case E_EXPRESSION_3V8:ae->outputadr++;ae->codeadr++;break;
+			case E_EXPRESSION_IV16:ae->outputadr+=2;ae->codeadr+=2;break;
+			case E_EXPRESSION_RST:ae->outputadr++;ae->codeadr++;break;
+			case E_EXPRESSION_IM:ae->outputadr++;ae->codeadr++;break;
 		}
 		if (ae->outputadr<=ae->maxptr) {
 		} else {
-			rasm_printf(ae,"[%s] Error line %d - output exceed limit %d\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->maxptr);
+			rasm_printf(ae,"[%s] Error line %d - NOCODE output exceed limit %d\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->maxptr);
 			exit(3);
 		}
 	}
@@ -3872,7 +3876,6 @@ void PopAllExpression(struct s_assenv *ae, int crunched_zone)
 	double v;
 	long r;
 	int i;
-
 	unsigned char *mem;
 	char *expr;
 	
@@ -3954,6 +3957,115 @@ void PopAllExpression(struct s_assenv *ae, int crunched_zone)
 				mem[ae->expression[i].wptr+1]=(unsigned char)((r>>8)&0xFF);
 				mem[ae->expression[i].wptr+2]=(unsigned char)((r>>16)&0xFF);
 				mem[ae->expression[i].wptr+3]=(unsigned char)((r>>24)&0xFF);
+				break;
+			case E_EXPRESSION_0VR:
+				/* convert v double value to Amstrad REAL */
+				{
+					double tmpval;
+					unsigned char rc[5]={0};
+					int j,ib,ibb,exp=0;
+
+					unsigned int deci;
+					int fracmax=0;
+					double frac;
+					int mesbits[32];
+					int ibit=0;
+					unsigned int mask;
+
+					deci=fabs(floor(v));
+					frac=fabs(v)-deci;
+
+					if (deci) {
+						mask=0x80000000;
+						while (!(deci & mask)) mask=mask/2;
+						while (mask) {
+							mesbits[ibit]=!!(deci & mask);
+	//printf("%d",mesbits[ibit]);
+							ibit++;
+							mask=mask/2;
+						}
+	//printf("\nexposant positif: %d\n",ibit);
+						exp=ibit;
+	//printf(".");
+						while (ibit<32 && frac!=0) {
+							frac=frac*2;
+							if (frac>=1.0) {
+								mesbits[ibit++]=1;
+	//printf("1");
+								frac-=1.0;
+							} else {
+								mesbits[ibit++]=0;
+	//printf("0");
+							}
+							fracmax++;
+						}
+					} else {
+	//printf("\nexposant negatif a definir:\n");
+	//printf("x.");
+						
+						/* handling zero */
+						if (frac==0.0) {
+							exp=0;
+							ibit=0;
+						} else {
+							/* looking for first significant bit */
+							while (1) {
+								frac=frac*2;
+								if (frac>=1.0) {
+									mesbits[ibit++]=1;
+	//printf("1");
+									frac-=1.0;
+									break; /* first significant bit found, now looking for limit */
+								} else {
+	//printf("o");
+								}
+								fracmax++;
+								exp--;
+							}
+							while (ibit<32 && frac!=0) {
+								frac=frac*2;
+								if (frac>=1.0) {
+									mesbits[ibit++]=1;
+	//printf("1");
+									frac-=1.0;
+								} else {
+									mesbits[ibit++]=0;
+	//printf("0");
+								}
+								fracmax++;
+							}
+						}
+					}
+
+	//printf("\n%d bits utilises en mantisse\n",ibit);
+					/* pack bits */
+					ib=3;ibb=0x80;
+					for (j=0;j<ibit;j++) {
+						if (mesbits[j])	rc[ib]|=ibb;
+						ibb/=2;
+						if (ibb==0) {
+							ibb=0x80;
+							ib--;
+						}
+					}
+					/* exponent */
+					exp+=128;
+					if (exp<0 || exp>255) {
+						rasm_printf(ae,"[%s] Error line %d - Exponent overflow\n",GetExpFile(ae,i),ae->wl[ae->expression[i].iw].l);
+						MaxError(ae);
+						exp=128;
+					}
+					rc[4]=exp;
+
+					/* REAL sign */
+					if (v>=0) {
+						rc[3]&=0x7F;
+					} else {
+						rc[3]|=0x80;
+					}
+
+					for (j=0;j<5;j++)	mem[ae->expression[i].wptr+j]=rc[j];
+				}
 				break;
 			case E_EXPRESSION_IM:
 				switch (r) {
@@ -6331,6 +6443,18 @@ void _STR(struct s_assenv *ae) {
 	}
 }
 
+void _DEFR(struct s_assenv *ae) {
+	if (!ae->wl[ae->idx].t) {
+		do {
+			ae->idx++;
+			PushExpression(ae,ae->idx,E_EXPRESSION_0VR);
+		} while (ae->wl[ae->idx].t==0);
+	} else {
+		rasm_printf(ae,"[%s] Error line %d - DEFW needs one or more parameters\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	}
+}
+
 void _DEFB(struct s_assenv *ae) {
 	int i,tquote;
 	if (!ae->wl[ae->idx].t) {
@@ -8150,8 +8274,10 @@ struct s_asm_keyword instruction[]={
 {"DI",0,_DI},
 {"EI",0,_EI},
 {"NOP",0,_NOP},
+{"DEFR",0,_DEFR},
 {"DEFB",0,_DEFB},
 {"DEFM",0,_DEFB},
+{"DR",0,_DEFR},
 {"DM",0,_DEFB},
 {"DB",0,_DEFB},
 {"DEFW",0,_DEFW},
@@ -9048,8 +9174,8 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 				}
 				if (lastspaceid!=-1) {
 					for (i=0;i<ae->io;i++) {
-						/* uniquement si le ORG a ete suivi d'ecriture */
-						if (ae->orgzone[i].ibank==lastspaceid && ae->orgzone[i].memstart!=ae->orgzone[i].memend) {
+						/* uniquement si le ORG a ete suivi d'ecriture et n'est pas en 'nocode' */
+						if (ae->orgzone[i].ibank==lastspaceid && ae->orgzone[i].memstart!=ae->orgzone[i].memend && ae->orgzone[i].nocode!=1) {
 							if (ae->orgzone[i].memstart<minmem) minmem=ae->orgzone[i].memstart;
 							if (ae->orgzone[i].memend>maxmem) maxmem=ae->orgzone[i].memend;
 						}
