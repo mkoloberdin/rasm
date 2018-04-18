@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.83"
+#define PROGRAM_VERSION   "0.84"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -33,15 +33,15 @@ arising from,  out of  or in connection  with  the software  or  the  use  or  o
 Software. »
 -----------------------------------------------------------------------------------------------------
 GCC compilation:
-cc rasm_v077.c -O2 -lm -lrt
+cc rasm_v084.c -O2 -lm -lrt -march=native
 strip a.out
 mv a.out rasm
 
 Visual studio compilation:
-cl.exe rasm_v077.c -O2
+cl.exe rasm_v084.c -O2
 
 MorphOS compilation (ixemul):
-ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v077.c
+ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v084.c
 strip rasm
 */
 
@@ -461,6 +461,20 @@ struct s_breakpoint {
 	int bank;
 };
 
+struct s_rasmstructfield {
+	char *name;
+	int offset;
+};
+
+struct s_rasmstruct {
+	char *name;
+	int crc;
+	int size;
+	/* fields */
+	struct s_rasmstructfield *rasmstructfield;
+	int irasmstructfield,mrasmstructfield;
+};
+
 struct s_assenv {
 	/* current memory */
 	int maxptr;
@@ -488,6 +502,13 @@ struct s_assenv {
 	int minadr,maxadr;
 	struct s_orgzone *orgzone;
 	int io,mo;
+	/* Struct */
+	struct s_rasmstruct *rasmstruct;
+	int irasmstruct,mrasmstruct;
+	int getstruct;
+	int backup_outputadr,backup_codeadr;
+	struct s_rasmstruct *rasmstructalias;
+	int irasmstructalias,mrasmstructalias;
 	/* expressions */
 	struct s_expression *expression;
 	int ie,me;
@@ -704,6 +725,17 @@ struct s_math_keyword math_keyword[]={
 #define CRC_MIY  0xD072B16B
 #define CRC_MSP  0xD01A876C
 #define CRC_MC   0xE018210C
+/* struct parsing */
+#define CRC_DEFB	0x37D15389
+#define CRC_DB		0x4BD5DEFE
+#define CRC_DEFW	0x37D1539E
+#define CRC_DW		0x4BD5DF13
+#define CRC_DEFI	0x37D15390
+#define CRC_DEFS	0x37D1539A
+#define CRC_DS		0x4BD5DF0F
+#define CRC_DEFR	0x37D15399
+#define CRC_DR		0x4BD5DF0E
+
 
 
 /*
@@ -715,7 +747,7 @@ A-Z variable ou fonction (cos, sin, tan, sqr, pow, mod, and, xor, mod, ...)
 */
 
 #define AutomateExpressionValidCharFirstDefinition "#%0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@${"
-#define AutomateExpressionValidCharDefinition "0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_}"
+#define AutomateExpressionValidCharDefinition "0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_}@"
 #define AutomateValidLabelFirstDefinition ".ABCDEFGHIJKLMNOPQRSTUVWXYZ_@"
 #define AutomateValidLabelDefinition "0123456789.ABCDEFGHIJKLMNOPQRSTUVWXYZ_@"
 #define AutomateDigitDefinition ".0123456789"
@@ -1804,9 +1836,9 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	
 	/* parser legacy */
 	static char *varbuffer=NULL;
-	static int ivar=0,maxivar=1;
-	int idx=0,crc,icheck,is_binary;
-	char c;
+	static int maxivar=1;
+	int idx=0,crc,icheck,is_binary,ivar=0;
+	char c,asciivalue[11];
 	/* backup alias replace */
 	char *zeexpression,*expr;
 	int original=1;
@@ -1815,6 +1847,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	/* dictionnary */
 	struct s_expr_dico *curdic;
 	struct s_label *curlabel;
+	char *localname;
 	int minusptr,imkey,bank,page;
 	double curval;
 	/* negative value */
@@ -1831,7 +1864,13 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		if (maxtokenstack) MemFree(tokenstack);
 		if (maxcomputestack) MemFree(computestack);
 		if (maxoperatorstack) MemFree(operatorstack);
-		maccu=maxivar=maxtokenstack=maxcomputestack=maxoperatorstack=0;
+		maccu=maxtokenstack=maxcomputestack=maxoperatorstack=0;
+		maxivar=1;
+		accu=NULL;
+		varbuffer=NULL;
+		tokenstack=NULL;
+		computestack=NULL;
+		operatorstack=NULL;
 		return 0.0;
 	}
 	/* be sure to have at least some bytes allocated */
@@ -1847,14 +1886,14 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		memset(&stackelement,0,sizeof(stackelement));
 		ObjectArrayAddDynamicValueConcat((void **)&tokenstack,&nbtokenstack,&maxtokenstack,&stackelement,sizeof(stackelement));
 	}
-
 	/* is there ascii char? */
 	while ((c=zeexpression[idx])!=0) {
 		if (c=='\'' || c=='"') {
 			/* echappement */
 			if (zeexpression[idx+1]=='\\') {
 				if (zeexpression[idx+2] && zeexpression[idx+3]==c) {
-					snprintf(zeexpression+idx,4,"#%03X",zeexpression[idx+2]);
+					sprintf(asciivalue,"#%03X",zeexpression[idx+2]);
+					memcpy(zeexpression+idx,asciivalue,4);
 					idx+=3;
 				} else {
 					rasm_printf(ae,"[%s] Error line %d - Only single escaped char may be quoted [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression));
@@ -1863,7 +1902,8 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					return 0;
 				}
 			} else if (zeexpression[idx+1] && zeexpression[idx+2]==c) {
-					snprintf(zeexpression+idx,3,"#%02X",zeexpression[idx+2]);
+					sprintf(asciivalue,"#%02X",zeexpression[idx+1]);
+					memcpy(zeexpression+idx,asciivalue,3);
 					idx+=2;
 			} else {
 				rasm_printf(ae,"[%s] Error line %d - Only single char may be quoted [%s]\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression));
@@ -2255,6 +2295,32 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 								page=2;
 								/* obligé de recalculer le CRC */
 								crc=GetCRC(varbuffer+minusptr+bank);
+							} else if (strncmp(varbuffer+minusptr,"{SIZEOF}",8)==0) {
+								bank=8;
+								page=3;
+								/* obligé de recalculer le CRC */
+								crc=GetCRC(varbuffer+minusptr+bank);
+								/* search in structures prototypes */
+								for (i=0;i<ae->irasmstruct;i++) {
+									if (ae->rasmstruct[i].crc==crc && strcmp(ae->rasmstruct[i].name,varbuffer+minusptr+bank)==0) {
+										curval=ae->rasmstruct[i].size;
+										break;
+									}
+								}
+								if (i==ae->irasmstruct) {
+									/* search in structures aliases */
+									for (i=0;i<ae->irasmstructalias;i++) {
+										if (ae->rasmstructalias[i].crc==crc && strcmp(ae->rasmstructalias[i].name,varbuffer+minusptr+bank)==0) {
+											curval=ae->rasmstructalias[i].size;
+											break;
+										}
+									}
+									if (i==ae->irasmstructalias) {
+										rasm_printf(ae,"[%s] Error line %d - cannot SIZEOF unknown structure [%s]!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),varbuffer+minusptr+bank);
+										MaxError(ae);
+										curval=0;
+									}
+								}
 							} else {
 								rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is an unknown prefix!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
 								MaxError(ae);
@@ -2265,133 +2331,135 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 							   expression->crunch_block=1 -> oui si même block
 							   expression->crunch_block=2 -> non car sera relogée
 							*/
-							curlabel=SearchLabel(ae,varbuffer+minusptr+bank,crc);
-							if (curlabel) {
-								if (ae->stage<2) {
-									if (curlabel->lz==-1) {
-										if (!bank) {
-											curval=curlabel->ptr;
-										} else {
-											switch (page) {
-												case 2:
-													if (curlabel->ibank<36) {
-														curval=(curlabel->ibank>>2)*8+2+0xC0;
-													} else {
-														rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGESET - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
-														MaxError(ae);
-														curval=curlabel->ibank;
-													}
-													break;
-												case 1:
-													if (curlabel->ibank<36) {
-															curval=ae->bankgate[curlabel->ibank];
-													} else {
-														rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGE - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
-														MaxError(ae);
-														curval=curlabel->ibank;
-													}
-													break;
-												case 0:curval=curlabel->ibank;break;
-												default:rasm_printf(ae,"[%s] INTERNAL ERROR Error line %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx));exit(-664);
-											}
-										}
-									} else {
-										/* label MUST be in the crunched block */
-										if (curlabel->iorgzone==ae->expression[didx].iorgzone && curlabel->ibank==ae->expression[didx].ibank && curlabel->lz<=ae->expression[didx].lz) {
+							if (page!=3) {
+								curlabel=SearchLabel(ae,varbuffer+minusptr+bank,crc);
+								if (curlabel) {
+									if (ae->stage<2) {
+										if (curlabel->lz==-1) {
 											if (!bank) {
 												curval=curlabel->ptr;
 											} else {
-												if (page) {
-													switch (page) {
-														case 2:
-															if (curlabel->ibank<36) {
-																curval=(curlabel->ibank>>2)*8+2+0xC0;
-															} else {
-																rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGESET - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
-																MaxError(ae);
-																curval=curlabel->ibank;
-															}
-															break;
-														case 1:
-															if (curlabel->ibank<36) {
-																	curval=ae->bankgate[curlabel->ibank];
-															} else {
-																rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGE - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
-																MaxError(ae);
-																curval=curlabel->ibank;
-															}
-															break;
-														case 0:curval=curlabel->ibank;break;
-														default:rasm_printf(ae,"[%s] INTERNAL ERROR Error line %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx));exit(-664);
-													}
+												switch (page) {
+													case 2:
+														if (curlabel->ibank<36) {
+															curval=(curlabel->ibank>>2)*8+2+0xC0;
+														} else {
+															rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGESET - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
+															MaxError(ae);
+															curval=curlabel->ibank;
+														}
+														break;
+													case 1:
+														if (curlabel->ibank<36) {
+																curval=ae->bankgate[curlabel->ibank];
+														} else {
+															rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGE - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
+															MaxError(ae);
+															curval=curlabel->ibank;
+														}
+														break;
+													case 0:curval=curlabel->ibank;break;
+													default:rasm_printf(ae,"[%s] INTERNAL ERROR Error line %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx));exit(-664);
 												}
 											}
 										} else {
-											rasm_printf(ae,"[%s] Error line %d - Label [%s](%d) cannot be computed because it is located after the crunched zone %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx),varbuffer,curlabel->lz,ae->expression[didx].lz);
-											MaxError(ae);
-											curval=0;
+											/* label MUST be in the crunched block */
+											if (curlabel->iorgzone==ae->expression[didx].iorgzone && curlabel->ibank==ae->expression[didx].ibank && curlabel->lz<=ae->expression[didx].lz) {
+												if (!bank) {
+													curval=curlabel->ptr;
+												} else {
+													if (page) {
+														switch (page) {
+															case 2:
+																if (curlabel->ibank<36) {
+																	curval=(curlabel->ibank>>2)*8+2+0xC0;
+																} else {
+																	rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGESET - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
+																	MaxError(ae);
+																	curval=curlabel->ibank;
+																}
+																break;
+															case 1:
+																if (curlabel->ibank<36) {
+																		curval=ae->bankgate[curlabel->ibank];
+																} else {
+																	rasm_printf(ae,"[%s] Error line %d - expression [%s] cannot use PAGE - label [%s] is in a temporary space!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer);
+																	MaxError(ae);
+																	curval=curlabel->ibank;
+																}
+																break;
+															case 0:curval=curlabel->ibank;break;
+															default:rasm_printf(ae,"[%s] INTERNAL ERROR Error line %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx));exit(-664);
+														}
+													}
+												}
+											} else {
+												rasm_printf(ae,"[%s] Error line %d - Label [%s](%d) cannot be computed because it is located after the crunched zone %d\n",GetExpFile(ae,didx),GetExpLine(ae,didx),varbuffer,curlabel->lz,ae->expression[didx].lz);
+												MaxError(ae);
+												curval=0;
+											}
+										}
+									} else {
+										if (bank) {
+											curval=curlabel->ibank;
+										} else {
+											curval=curlabel->ptr;
 										}
 									}
 								} else {
-									if (bank) {
-										curval=curlabel->ibank;
-									} else {
-										curval=curlabel->ptr;
-									}
-								}
-							} else {
-								/***********
-									to allow aliases declared after use
-								***********/
-								if ((ialias=SearchAlias(ae,crc,varbuffer+minusptr))>=0) {
-									newlen=ae->alias[ialias].len;
-									lenw=strlen(zeexpression);
-									if (newlen>ivar) {
-										/* realloc bigger */
-										if (original) {
-											expr=MemMalloc(lenw+newlen-ivar+1);
-											memcpy(expr,zeexpression,lenw+1);
-											zeexpression=expr;
-											original=0;
-										} else {
-											zeexpression=MemRealloc(zeexpression,lenw+newlen-ivar+1);
+									/***********
+										to allow aliases declared after use
+									***********/
+									if ((ialias=SearchAlias(ae,crc,varbuffer+minusptr))>=0) {
+										newlen=ae->alias[ialias].len;
+										lenw=strlen(zeexpression);
+										if (newlen>ivar) {
+											/* realloc bigger */
+											if (original) {
+												expr=MemMalloc(lenw+newlen-ivar+1);
+												memcpy(expr,zeexpression,lenw+1);
+												zeexpression=expr;
+												original=0;
+											} else {
+												zeexpression=MemRealloc(zeexpression,lenw+newlen-ivar+1);
+											}
 										}
-									}
-									/* startvar? */
-									if (newlen!=ivar) {
-										MemMove(zeexpression+startvar+newlen,zeexpression+startvar+ivar,lenw-startvar-ivar+1);
-									}
-									strncpy(zeexpression+startvar,ae->alias[ialias].translation,newlen); /* copy without zero terminator */
-									idx=startvar;
-									ivar=0;
-									continue;
-								} else {
-									/* last chance to get a keyword */
-									if (strcmp(varbuffer+minusptr,"REPEAT_COUNTER")==0) {
-										if (ae->ir) {
-											curval=ae->repeat[ae->ir-1].repeat_counter;
+										/* startvar? */
+										if (newlen!=ivar) {
+											MemMove(zeexpression+startvar+newlen,zeexpression+startvar+ivar,lenw-startvar-ivar+1);
+										}
+										strncpy(zeexpression+startvar,ae->alias[ialias].translation,newlen); /* copy without zero terminator */
+										idx=startvar;
+										ivar=0;
+										continue;
+									} else {
+										/* last chance to get a keyword */
+										if (strcmp(varbuffer+minusptr,"REPEAT_COUNTER")==0) {
+											if (ae->ir) {
+												curval=ae->repeat[ae->ir-1].repeat_counter;
+											} else {
+												rasm_printf(ae,"[%s] Error line %d - cannot use REPEAT_COUNTER keyword outside a repeat loop\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
+												MaxError(ae);
+												curval=0;
+											}
+										} else if (strcmp(varbuffer+minusptr,"WHILE_COUNTER")==0) {
+											if (ae->iw) {
+												curval=ae->whilewend[ae->iw-1].while_counter;
+											} else {
+												rasm_printf(ae,"[%s] Error line %d - cannot use WHILE_COUNTER keyword outside a while loop\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
+												MaxError(ae);
+												curval=0;
+											}
 										} else {
-											rasm_printf(ae,"[%s] Error line %d - cannot use REPEAT_COUNTER keyword outside a repeat loop\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
+											/* in case the expression is a register */
+											if (IsRegister(varbuffer+minusptr)) {
+												rasm_printf(ae,"[%s] Error line %d - cannot use register %s in this context\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression));
+											} else {
+												rasm_printf(ae,"[%s] Error line %d - expression [%s] keyword [%s] not found in variables,labels or aliases\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer+minusptr);
+											}
 											MaxError(ae);
 											curval=0;
 										}
-									} else if (strcmp(varbuffer+minusptr,"WHILE_COUNTER")==0) {
-										if (ae->iw) {
-											curval=ae->whilewend[ae->iw-1].while_counter;
-										} else {
-											rasm_printf(ae,"[%s] Error line %d - cannot use WHILE_COUNTER keyword outside a while loop\n",GetExpFile(ae,didx),GetExpLine(ae,didx));
-											MaxError(ae);
-											curval=0;
-										}
-									} else {
-										/* in case the expression is a register */
-										if (IsRegister(varbuffer+minusptr)) {
-											rasm_printf(ae,"[%s] Error line %d - cannot use register %s in this context\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression));
-										} else {
-											rasm_printf(ae,"[%s] Error line %d - expression [%s] keyword [%s] not found in variables,labels or aliases\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),varbuffer+minusptr);
-										}
-										MaxError(ae);
-										curval=0;
 									}
 								}
 							}
@@ -2399,7 +2467,6 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 					}
 			}
 			if (minusptr) curval=-curval;
-
 			stackelement.operator=E_COMPUTE_OPERATION_PUSH_DATASTC;
 			stackelement.value=curval;
 			/* priority isn't used */
@@ -2412,7 +2479,6 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 		************************************/
 		ObjectArrayAddDynamicValueConcat((void **)&tokenstack,&nbtokenstack,&maxtokenstack,&stackelement,sizeof(stackelement));
 	}
-
 	/*******************************************************
 	      C R E A T E    E X E C U T I O N    S T A C K
 	*******************************************************/
@@ -2510,7 +2576,6 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 	/********************************************
 	        E X E C U T E        S T A C K
 	********************************************/
-
 	if (ae->maxam || ae->as80) {
 		int workinterval;
 		if (ae->as80) workinterval=0xFFFFFFFF; else workinterval=0xFFFF;
@@ -2771,7 +2836,6 @@ double ComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int 
 		*****************************************/
 		default:break;
 	}
-
 	return ComputeExpressionCore(ae,expr,ptr,didx);
 }
 int RoundComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int expression_expected) {
@@ -2788,9 +2852,9 @@ void ExpressionFastTranslate(struct s_assenv *ae, char **ptr_expr, int fullrepla
 	static char *varbuffer=NULL;
 	static int ivar=0,maxivar=1;
 	char curval[256]={0};
-	int c,lenw=0,idx=0,crc,startvar,newlen,ialias,found_replace,yves,dek,reidx,lenbuf,rlen;
+	int c,lenw=0,idx=0,crc,startvar,newlen,ialias,found_replace,yves,dek,reidx,lenbuf,rlen,tagoffset;
 	double v;
-	char tmpuchar[5];
+	char tmpuchar[16];
 	char *expr,*locallabel;
 	
 	if (!ae) {
@@ -2998,19 +3062,41 @@ void ExpressionFastTranslate(struct s_assenv *ae, char **ptr_expr, int fullrepla
 				} else {
 				}
 			}
-			/* non trouve c'est peut-etre un label local */
-			if (!found_replace && varbuffer[0]=='@' && (ae->ir || ae->iw || ae->imacro)) {
-				lenbuf=strlen(varbuffer);
-				locallabel=MakeLocalLabel(ae,varbuffer,&dek);
-				
-				/*** le grand remplacement ***/
-				rlen=strlen(expr+startvar+lenbuf)+1;
-				expr=*ptr_expr=MemRealloc(expr,strlen(expr)+dek+1);
-				MemMove(expr+startvar+lenbuf+dek,expr+startvar+lenbuf,rlen);
-				strncpy(expr+startvar+lenbuf,locallabel,dek);
-				idx+=dek;
-				MemFree(locallabel);
-				found_replace=1;
+			if (!found_replace) {
+				/* non trouve c'est peut-etre un label local */
+				if (varbuffer[0]=='@') {
+					if (ae->ir || ae->iw || ae->imacro) {
+						lenbuf=strlen(varbuffer);
+						locallabel=MakeLocalLabel(ae,varbuffer,&dek);
+						/*** le grand remplacement ***/
+						rlen=strlen(expr+startvar+lenbuf)+1;
+						expr=*ptr_expr=MemRealloc(expr,strlen(expr)+dek+1);
+						MemMove(expr+startvar+lenbuf+dek,expr+startvar+lenbuf,rlen);
+						strncpy(expr+startvar+lenbuf,locallabel,dek);
+						idx+=dek;
+						MemFree(locallabel);
+						found_replace=1;
+					}
+				/* non trouve c'est peut-etre un label local après un tag */
+				} else if (varbuffer[0]=='{') {
+					if (strncmp(varbuffer,"{BANK}",6)==0 || strncmp(varbuffer,"{PAGE}",6)==0) tagoffset=6; else
+					if (strncmp(varbuffer,"{PAGESET}",9)==0) tagoffset=9; else
+					if (strncmp(varbuffer,"{SIZEOF}",8)==0) tagoffset=8;
+					
+					if (varbuffer[tagoffset]=='@') {
+						startvar+=tagoffset;
+						lenbuf=strlen(varbuffer+tagoffset);
+						locallabel=MakeLocalLabel(ae,varbuffer+tagoffset,&dek);
+						/*** le grand remplacement ***/
+						rlen=strlen(expr+startvar+lenbuf)+1;
+						expr=*ptr_expr=MemRealloc(expr,strlen(expr)+dek+1);
+						MemMove(expr+startvar+lenbuf+dek,expr+startvar+lenbuf,rlen);
+						strncpy(expr+startvar+lenbuf,locallabel,dek);
+						idx+=dek;
+						MemFree(locallabel);
+						found_replace=1;
+					}
+				}
 			}
 			if (!found_replace && strcmp(varbuffer,"REPEAT_COUNTER")==0) {
 				if (ae->ir) {
@@ -4124,6 +4210,23 @@ void InsertLabelToTree(struct s_assenv *ae, struct s_label *label)
 	ObjectArrayAddDynamicValueConcat((void**)&curlabeltree->label,&curlabeltree->nlabel,&curlabeltree->mlabel,label,sizeof(struct s_label));
 }
 
+/* use by structure mechanism to add fake labels */
+void PushLabelLight(struct s_assenv *ae, struct s_label *curlabel) {
+	#undef FUNC
+	#define FUNC "PushLabelLight"
+	
+	struct s_label *searched_label;
+	
+	/* PushLabel light */
+	if ((searched_label=SearchLabel(ae,curlabel->name,curlabel->crc))!=NULL) {
+		rasm_printf(ae,"[%s] Error line %d - Structure insertion caused duplicate label [%s]\n",GetExpFile(ae,0),GetExpLine(ae,0),curlabel->name);
+		MaxError(ae);
+		MemFree(curlabel->name);
+	} else {
+		ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,curlabel,sizeof(struct s_label));
+		InsertLabelToTree(ae,curlabel);
+	}				
+}
 void PushLabel(struct s_assenv *ae)
 {
 	#undef FUNC
@@ -4185,36 +4288,53 @@ void PushLabel(struct s_assenv *ae)
 		default:break;
 	}
 	
-	/* labels locaux */
-	if (ae->wl[ae->idx].w[0]=='@' && (ae->ir || ae->iw || ae->imacro)) {
-		
+	if (ae->getstruct) {
+		struct s_rasmstructfield rasmstructfield={0};
+		/* copy label+offset in the structure */
+		rasmstructfield.name=TxtStrDup(ae->wl[ae->idx].w);
+		rasmstructfield.offset=ae->codeadr;
+		ObjectArrayAddDynamicValueConcat((void **)&ae->rasmstruct[ae->irasmstruct-1].rasmstructfield,
+				&ae->rasmstruct[ae->irasmstruct-1].irasmstructfield,&ae->rasmstruct[ae->irasmstruct-1].mrasmstructfield,
+				&rasmstructfield,sizeof(rasmstructfield));
+		/* label is structname+field */
+		curlabelname=curlabel.name=MemMalloc(strlen(ae->rasmstruct[ae->irasmstruct-1].name)+strlen(ae->wl[ae->idx].w)+2);
+		sprintf(curlabel.name,"%s.%s",ae->rasmstruct[ae->irasmstruct-1].name,ae->wl[ae->idx].w);
 		curlabel.iw=-1;
-		curlabelname=curlabel.name=MakeLocalLabel(ae,ae->wl[ae->idx].w,NULL);
+		/* legacy */
 		curlabel.crc=GetCRC(curlabel.name);
+		curlabel.ptr=ae->codeadr;
 	} else {
-		/* ancien style */
-		if (ae->wl[ae->idx].w[0]=='.') {
-			i=0;
-			do {
-				ae->wl[ae->idx].w[i]=ae->wl[ae->idx].w[i+1];
-				i++;
-			} while (ae->wl[ae->idx].w[i]!=0);
-		}
-		curlabel.iw=ae->idx;
-		curlabel.crc=GetCRC(ae->wl[ae->idx].w);
-		curlabelname=ae->wl[ae->idx].w;
+		/* labels locaux */
+		if (ae->wl[ae->idx].w[0]=='@' && (ae->ir || ae->iw || ae->imacro)) {
+			
+			curlabel.iw=-1;
+			curlabelname=curlabel.name=MakeLocalLabel(ae,ae->wl[ae->idx].w,NULL);
+			curlabel.crc=GetCRC(curlabel.name);
+		} else {
+			/* ancien style */
+			if (ae->wl[ae->idx].w[0]=='.') {
+				i=0;
+				do {
+					ae->wl[ae->idx].w[i]=ae->wl[ae->idx].w[i+1];
+					i++;
+				} while (ae->wl[ae->idx].w[i]!=0);
+			}
+			curlabel.iw=ae->idx;
+			curlabel.crc=GetCRC(ae->wl[ae->idx].w);
+			curlabelname=ae->wl[ae->idx].w;
 
-		/* contrôle dico uniquement avec des labels non locaux */
-		if (SearchDico(ae,curlabelname,curlabel.crc)) {
-			rasm_printf(ae,"[%s] Error line %d - cannot create label [%s] as there is already a variable with the same name\n",GetExpFile(ae,0),ae->wl[ae->idx].l,curlabelname);
-			MaxError(ae);
-			return;
+			/* contrôle dico uniquement avec des labels non locaux */
+			if (SearchDico(ae,curlabelname,curlabel.crc)) {
+				rasm_printf(ae,"[%s] Error line %d - cannot create label [%s] as there is already a variable with the same name\n",GetExpFile(ae,0),ae->wl[ae->idx].l,curlabelname);
+				MaxError(ae);
+				return;
+			}
 		}
+		curlabel.ptr=ae->codeadr;
+		curlabel.ibank=ae->activebank;
+		curlabel.iorgzone=ae->io-1;
+		curlabel.lz=ae->lz;
 	}
-	curlabel.ptr=ae->codeadr;
-	curlabel.ibank=ae->activebank;
-	curlabel.iorgzone=ae->io-1;
-	curlabel.lz=ae->lz;
 
 	if ((searched_label=SearchLabel(ae,curlabelname,curlabel.crc))!=NULL) {
 		rasm_printf(ae,"[%s] Error line %d - Duplicate label [%s]\n",GetExpFile(ae,0),GetExpLine(ae,0),curlabelname);
@@ -7338,7 +7458,7 @@ void __STOP(struct s_assenv *ae) {
 		rasm_printf(ae,"[%s] Error line %d - STOP winape directive do not need parameter. Anyway, STOP assembling...\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
 	}
-	rasm_printf(ae,"stop assembling as requested\n");
+	rasm_printf(ae,"stop assembling\n");
 	while (ae->wl[ae->idx].t!=2) ae->idx++;
 	ae->idx--;
 	ae->stop=1;
@@ -7685,9 +7805,10 @@ void __ASSERT(struct s_assenv *ae) {
 		rexpr=!!RoundComputeExpression(ae,ae->wl[ae->idx+1].w,ae->codeadr,0,1);
 		if (!rexpr) {
 			rasm_printf(ae,"[%s] Error line %d, ASSERT failed!\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
-			exit(2);
+			__STOP(ae);
+		} else {
+			ae->idx++;
 		}
-		ae->idx++;
 	} else {
 		rasm_printf(ae,"[%s] Error line %d, ASSERT need one expression\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		exit(2);
@@ -7976,7 +8097,6 @@ void ___org_new(struct s_assenv *ae, int nocode) {
 	} else {
 		___output=___internal_output;
 	}
-
 	
 	ObjectArrayAddDynamicValueConcat((void**)&ae->orgzone,&ae->io,&ae->mo,&orgzone,sizeof(orgzone));
 }
@@ -8003,7 +8123,6 @@ void __ORG(struct s_assenv *ae) {
 	
 	___org_new(ae,ae->nocode);
 }
-
 void __NOCODE(struct s_assenv *ae) {
 	if (ae->wl[ae->idx].t) {
 		___org_close(ae);
@@ -8020,6 +8139,171 @@ void __CODE(struct s_assenv *ae) {
 	} else {
 		rasm_printf(ae,"[%s] Error line %d - CODE directive does not need parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 		MaxError(ae);
+	}
+}
+void __STRUCT(struct s_assenv *ae) {
+	struct s_rasmstructfield rasmstructfield;
+	struct s_rasmstruct rasmstruct={0};
+	struct s_rasmstruct rasmstructalias={0};
+	struct s_label curlabel={0},*searched_label;
+	int crc,i,irs;
+
+	if (!ae->wl[ae->idx].t) {
+		if (ae->wl[ae->idx+1].t) {
+			/**************************************************
+				s t r u c t u r e     d e c l a r a t i o n
+			**************************************************/
+			if (!ae->getstruct) {
+				/* cannot be an existing label or EQU (but variable ok) */
+				crc=GetCRC(ae->wl[ae->idx+1].w);
+				if ((SearchLabel(ae,ae->wl[ae->idx+1].w,crc))!=NULL || (SearchAlias(ae,crc,ae->wl[ae->idx+1].w))!=-1) {
+					rasm_printf(ae,"[%s] Error line %d - STRUCT name must be different from existing labels ou aliases\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+					MaxError(ae);
+				} else {
+					/* faire un test des mots réservés */
+
+					ae->backup_outputadr=ae->outputadr;
+					ae->backup_codeadr=ae->codeadr;
+					ae->getstruct=1;
+					/* STRUCT = NOCODE + ORG 0 */
+					___org_close(ae);
+					ae->codeadr=0;
+					___org_new(ae,1);
+					/* create struct */
+					rasmstruct.name=TxtStrDup(ae->wl[ae->idx+1].w);
+					rasmstruct.crc=GetCRC(rasmstruct.name);
+					ObjectArrayAddDynamicValueConcat((void **)&ae->rasmstruct,&ae->irasmstruct,&ae->mrasmstruct,&rasmstruct,sizeof(rasmstruct));
+					ae->idx++;
+				}
+			} else {
+				rasm_printf(ae,"[%s] Error line %d - STRUCT cannot be declared inside another struct\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+				MaxError(ae);
+			}
+		} else {
+			/**************************************************
+				s t r u c t u r e     i n s e r t i o n
+			**************************************************/
+			/* insert struct param1 in memory with name param2 */
+			crc=GetCRC(ae->wl[ae->idx+1].w);
+			/* look for existing struct */
+			for (irs=0;irs<ae->irasmstruct;irs++) {
+				if (ae->rasmstruct[irs].crc==crc && strcmp(ae->rasmstruct[irs].name,ae->wl[ae->idx+1].w)==0) break;
+			}
+			if (irs==ae->irasmstruct) {
+				rasm_printf(ae,"[%s] Error line %d - Unknown STRUCT %s\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->wl[ae->idx+1].w);
+				MaxError(ae);
+			} else {
+				/* create alias for sizeof */
+				if (!ae->getstruct) {
+					if (ae->wl[ae->idx+2].w[0]=='@') {
+						rasmstructalias.name=MakeLocalLabel(ae,ae->wl[ae->idx+2].w,NULL);
+					} else {
+						rasmstructalias.name=TxtStrDup(ae->wl[ae->idx+2].w);
+					}
+				} else {
+					/* struct inside struct */
+					rasmstructalias.name=MemMalloc(strlen(ae->rasmstruct[ae->irasmstruct-1].name)+2+strlen(ae->wl[ae->idx+2].w));
+					sprintf(rasmstructalias.name,"%s.%s",ae->rasmstruct[ae->irasmstruct-1].name,ae->wl[ae->idx+2].w);
+				}
+				rasmstructalias.crc=GetCRC(rasmstructalias.name);
+				rasmstructalias.size=ae->rasmstruct[irs].size;
+				ObjectArrayAddDynamicValueConcat((void **)&ae->rasmstructalias,&ae->irasmstructalias,&ae->mrasmstructalias,&rasmstructalias,sizeof(rasmstructalias));
+				
+				/* create label for global struct ptr */
+				curlabel.iw=-1;
+				curlabel.ptr=ae->codeadr;
+				if (!ae->getstruct) {
+					if (ae->wl[ae->idx+2].w[0]=='@') curlabel.name=MakeLocalLabel(ae,ae->wl[ae->idx+2].w,NULL); else curlabel.name=TxtStrDup(ae->wl[ae->idx+2].w);
+					curlabel.crc=GetCRC(curlabel.name);
+					PushLabelLight(ae,&curlabel);
+				} else {
+					/* or check for non-local name in struct declaration */
+					if (ae->wl[ae->idx+2].w[0]=='@') {
+						rasm_printf(ae,"[%s] Error line %d - Meaningless use of local label in a STRUCT definition\n",GetExpFile(ae,0),GetExpLine(ae,0));
+						MaxError(ae);
+					} else {
+						curlabel.name=TxtStrDup(rasmstructalias.name);
+						curlabel.crc=GetCRC(curlabel.name);
+						PushLabelLight(ae,&curlabel);
+					}
+				}
+
+				/* first field is in fact the very beginning of the structure */
+				if (ae->getstruct) {
+					rasmstructfield.name=TxtStrDup(ae->wl[ae->idx+2].w);
+					rasmstructfield.offset=ae->codeadr;
+					ObjectArrayAddDynamicValueConcat((void **)&ae->rasmstruct[ae->irasmstruct-1].rasmstructfield,
+							&ae->rasmstruct[ae->irasmstruct-1].irasmstructfield,&ae->rasmstruct[ae->irasmstruct-1].mrasmstructfield,
+							&rasmstructfield,sizeof(rasmstructfield));
+				}				
+				
+				/* create subfields */
+				curlabel.iw=-1;
+				curlabel.ptr=ae->codeadr;
+				for (i=0;i<ae->rasmstruct[irs].irasmstructfield;i++) {
+					curlabel.ptr=ae->codeadr+ae->rasmstruct[irs].rasmstructfield[i].offset;
+					if (!ae->getstruct) {
+						curlabel.name=MemMalloc(strlen(ae->wl[ae->idx+2].w)+strlen(ae->rasmstruct[irs].rasmstructfield[i].name)+2);
+						sprintf(curlabel.name,"%s.%s",ae->wl[ae->idx+2].w,ae->rasmstruct[irs].rasmstructfield[i].name);
+						if (ae->wl[ae->idx+2].w[0]=='@') {
+							curlabel.name=MakeLocalLabel(ae,curlabel.name,NULL);
+						}
+						curlabel.crc=GetCRC(curlabel.name);
+						PushLabelLight(ae,&curlabel);
+					/* are we using a struct in a struct definition? */
+					} else {
+						/* copy structname+label+offset in the structure */
+						rasmstructfield.name=MemMalloc(strlen(ae->wl[ae->idx+2].w)+strlen(ae->rasmstruct[irs].rasmstructfield[i].name)+2);
+						sprintf(rasmstructfield.name,"%s.%s",ae->wl[ae->idx+2].w,ae->rasmstruct[irs].rasmstructfield[i].name);
+						rasmstructfield.offset=curlabel.ptr;
+						ObjectArrayAddDynamicValueConcat((void **)&ae->rasmstruct[ae->irasmstruct-1].rasmstructfield,
+								&ae->rasmstruct[ae->irasmstruct-1].irasmstructfield,&ae->rasmstruct[ae->irasmstruct-1].mrasmstructfield,
+								&rasmstructfield,sizeof(rasmstructfield));
+								
+						/* need to push also generic label */
+						curlabel.name=MemMalloc(strlen(ae->rasmstruct[ae->irasmstruct-1].name)+strlen(rasmstructfield.name)+2); /* overwrite PTR */
+						sprintf(curlabel.name,"%s.%s",ae->rasmstruct[ae->irasmstruct-1].name,rasmstructfield.name);
+						curlabel.crc=GetCRC(curlabel.name);
+						PushLabelLight(ae,&curlabel);
+					}					
+				}
+				for (i=0;i<ae->rasmstruct[irs].size;i++) ___output(ae,0);
+				ae->idx+=2;
+			}
+		}
+	} else {
+		rasm_printf(ae,"[%s] Error line %d - STRUCT directive needs one or two parameters\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	}
+}
+void __ENDSTRUCT(struct s_assenv *ae) {
+	struct s_label curlabel={0},*searched_label;
+
+	if (!ae->wl[ae->idx].t) {
+		rasm_printf(ae,"[%s] Error line %d - ENDSTRUCT directive does not need parameter\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+		MaxError(ae);
+	} else {
+		if (ae->getstruct) {
+			ae->rasmstruct[ae->irasmstruct-1].size=ae->codeadr;
+			ae->getstruct=0;
+
+			curlabel.name=TxtStrDup(ae->rasmstruct[ae->irasmstruct-1].name);
+			curlabel.crc=ae->rasmstruct[ae->irasmstruct-1].crc;
+			curlabel.iw=-1;
+			curlabel.ptr=ae->rasmstruct[ae->irasmstruct-1].size;
+
+			/* PushLabel light - sizeof like Vasm with struct name */
+			PushLabelLight(ae,&curlabel);
+			
+			/* like there was no byte */
+			ae->outputadr=ae->backup_outputadr;
+			ae->codeadr=ae->backup_codeadr;
+			___org_close(ae);
+			___org_new(ae,0);
+		} else {
+			rasm_printf(ae,"[%s] Error line %d - ENDSTRUCT encountered outside STRUCT declaration\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+			MaxError(ae);
+		}
 	}
 }
 
@@ -8372,6 +8656,9 @@ struct s_asm_keyword instruction[]={
 {"OTI",0,_OUTI},
 {"SHL",0,_SLA},
 {"SHR",0,_SRL},
+{"STRUCT",0,__STRUCT},
+{"ENDSTRUCT",0,__ENDSTRUCT},
+{"ENDS",0,__ENDSTRUCT},
 {"",0,NULL}
 };
 
@@ -8518,7 +8805,6 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 			}
 		}
 	}
-
 	/* Execution des mots clefs */
 	/**********************************************************
 	       A S S E M B L I N G    M A I N    L O O P
@@ -8537,7 +8823,6 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 			for (iiii=0;iiii<ae->imacropos;iiii++) {
 				rasm_printf(ae,"M[%d] s=%d e=%d ",iiii,ae->macropos[iiii].start,ae->macropos[iiii].end);
 			}
-			
 			rasm_printf(ae,"\n");
 		}
 		/********************************************************************
@@ -8778,7 +9063,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 			**********************************************
 			*********************************************/
 			if (ae->forcecpr) {
-				char ChunkName[5];
+				char ChunkName[32];
 				int ChunkSize;
 				int do_it=1;
 				unsigned char chunk_endian;
@@ -9403,8 +9688,25 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 		MemFree(ae->hexbin);
 	}
 	for (i=0;i<ae->il;i++) {
+		//if (ae->label[i].iw==-1) printf("label[%d]=%s (v=%d)\n",i,ae->label[i].name,ae->label[i].ptr);
 		if (ae->label[i].name && ae->label[i].iw==-1) MemFree(ae->label[i].name);
 	}
+	/* structures */
+	for (i=0;i<ae->irasmstructalias;i++) {
+		//printf("structalias[%d]=%s (%d)\n",i,ae->rasmstructalias[i].name,ae->rasmstructalias[i].size);
+		MemFree(ae->rasmstructalias[i].name);
+	}
+	if (ae->mrasmstructalias) MemFree(ae->rasmstructalias);
+	
+	for (i=0;i<ae->irasmstruct;i++) {
+		for (j=0;j<ae->rasmstruct[i].irasmstructfield;j++) {
+			MemFree(ae->rasmstruct[i].rasmstructfield[j].name);
+		}
+		if (ae->rasmstruct[i].mrasmstructfield) MemFree(ae->rasmstruct[i].rasmstructfield);
+	}
+	if (ae->mrasmstruct) MemFree(ae->rasmstruct);
+	
+	/* other */
 	if (ae->maxbreakpoint) MemFree(ae->breakpoint);
 	if (ae->ml) MemFree(ae->label);
 	if (ae->mr) MemFree(ae->repeat);
@@ -9599,7 +9901,6 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	ae=MemMalloc(sizeof(struct s_assenv));
 	memset(ae,0,sizeof(struct s_assenv));
 	ae->flux=flux;
-
 	/* check snapshot structure */
 	if (sizeof(ae->snapshot)!=0x100 || &ae->snapshot.fdd.motorstate-(unsigned char*)&ae->snapshot!=0x9C || &ae->snapshot.crtcstate.model-(unsigned char*)&ae->snapshot!=0xA4
 		|| &ae->snapshot.romselect-(unsigned char*)&ae->snapshot!=0x55
@@ -9608,7 +9909,6 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		rasm_printf(ae,"snapshot structure integrity check KO\n");
 		exit(349);
 	}
-
 	for (i=0;i<36;i++) {
 		switch (i) {
 		case 0 :case 1:case 2:case 3:ae->bankgate[i]=0xC0;break;
@@ -9646,7 +9946,6 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		case 35:ae->bankgate[i]=0xFF;break;
 		}
 	}
-	
 	memcpy(ae->snapshot.idmark,"MV - SNA",8);
 	ae->snapshot.version=3;
 	ae->snapshot.registers.IM=1;
@@ -9692,7 +9991,6 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		pasmo		sprintf(symbol_line,"%s EQU 0%4XH\n",ae->label[i].name,ae->label[i].ptr);
 		rasm 		sprintf(symbol_line,"%s #%X B%d\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr,ae->label[i].ibank>31?0:ae->label[i].ibank);
 	*/
-	
 	if (labelfilename) {
 		for (i=0;labelfilename[i] && labelfilename[i][0];i++) {
 			rasm_printf(ae,"Label import from [%s]\n",labelfilename[i]);
@@ -9739,7 +10037,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		ae->outputfilename=TxtStrDup("rasmoutput");
 	}
 
-	if (!strstr(filename,".") && !FileExists(filename)) {
+	if (filename && !strstr(filename,".") && !FileExists(filename)) {
 		/* pas d'extension, fichier non trouvé */
 		filename=MemRealloc(filename,l+5);
 		strcat(filename,".asm");
@@ -10309,19 +10607,22 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 								ispace=0;
 								texpr=1;
 								macro_trigger=0;
-								/* add macro name to instruction pool for preprocessor */
-								curmacrofast.mnemo=curw.w;
-								curmacrofast.crc=GetCRC(curw.w);
-								ObjectArrayAddDynamicValueConcat((void**)&MacroFast,&idxmacrofast,&maxmacrofast,&curmacrofast,sizeof(struct s_macro_fast));	
+//printf("macro trigger w=[%s]\n",curw.w);								
+								/* add macro name to instruction pool for preprocessor but not struct or write */
+								if (macro_trigger=='M') {
+									curmacrofast.mnemo=curw.w;
+									curmacrofast.crc=GetCRC(curw.w);
+									ObjectArrayAddDynamicValueConcat((void**)&MacroFast,&idxmacrofast,&maxmacrofast,&curmacrofast,sizeof(struct s_macro_fast));	
+								}
 							} else {
 								int keymatched=0;
 								if ((ifast=ae->fastmatch[(int)curw.w[0]])!=-1) {
 									while (instruction[ifast].mnemo[0]==curw.w[0]) {
 										if (strcmp(instruction[ifast].mnemo,curw.w)==0) {
 											keymatched=1;														
-											if (strcmp(curw.w,"MACRO")==0 || strcmp(curw.w,"WRITE")==0) {
+											if (strcmp(curw.w,"MACRO")==0 || strcmp(curw.w,"STRUCT")==0 || strcmp(curw.w,"WRITE")==0) {
 /* @@TODO AS80 compatibility patch!!! */
-												macro_trigger=1;
+												macro_trigger=curw.w[0];
 											} else {
 												Automate[' ']=1;
 												Automate['\t']=1;
@@ -10357,6 +10658,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 					break;
 				case 3:
 					/* fin de ligne, on remet l'automate comme il faut */
+					macro_trigger=0;
 					Automate[' ']=2;
 					Automate['\t']=2;
 					ispace=0;
@@ -10527,7 +10829,6 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 			MemFree(listing[l].listing);
 	}	
 	MemFree(listing);
-
 	/* liste de mots de type 0 ou 1, terminÃ©e par un mot vide de type 2 */
 	ae->wl=wordlist;
 	return ae;
@@ -10740,16 +11041,18 @@ void RasmAutotest(void)
 	
 	minicode=MemMalloc(4);minicode[0]=' ';minicode[1]='n';minicode[2]='o';minicode[3]='p';
 	//int RasmAssemble(const char *datain, int lenin, unsigned char **dataout, int *lenout)
-	ret=RasmAssemble(minicode,4,&opcode,&opcodelen);
+	printf(".");fflush(stdout);ret=RasmAssemble(minicode,4,&opcode,&opcodelen);
 	if (!ret && opcodelen==1 && opcode[0]==0x0) {} else {printf("Autotest 001 ERROR\n");exit(-1);}
 	MemFree(opcode);opcode=NULL;
-	ret=RasmAssemble("ld a,5\n",strlen("ld a,5\n"),&opcode,&opcodelen);
+	printf(".");fflush(stdout);ret=RasmAssemble("ld a,5\n",strlen("ld a,5\n"),&opcode,&opcodelen);
 	if (!ret && opcodelen==2 && opcode[0]==0x3E && opcode[1]==5) {} else {printf("Autotest 002 ERROR\n");exit(-1);}
 	MemFree(opcode);opcode=NULL;
-	ret=RasmAssemble(AUTOTEST_MACRO,strlen(AUTOTEST_MACRO),&opcode,&opcodelen);
-	if (!ret) {} else {printf("Autotest 003 ERROR (imbricated macros)\n");exit(-1);}
+	minicode=MemRealloc(minicode,strlen(AUTOTEST_MACRO)+1);
+	strcpy(minicode,AUTOTEST_MACRO);
+	printf(".");fflush(stdout);ret=RasmAssemble(minicode,strlen(minicode),&opcode,&opcodelen);
+	if (!ret && opcodelen==91) {} else {printf("Autotest 003 ERROR (imbricated macros)\n");exit(-1);}
 	MemFree(opcode);opcode=NULL;	
-	ret=RasmAssemble(AUTOTEST_OPCODES,strlen(AUTOTEST_OPCODES),&opcode,&opcodelen);
+	printf(".");fflush(stdout);ret=RasmAssemble(AUTOTEST_OPCODES,strlen(AUTOTEST_OPCODES),&opcode,&opcodelen);
 	if (!ret) {} else {printf("Autotest 004 ERROR (all opcodes)\n");exit(-1);}
 	MemFree(opcode);opcode=NULL;
 	
@@ -11419,7 +11722,7 @@ int main(int argc, char **argv)
 	CloseLibrary();
 	#endif
 	exit(0);
-	return 0; // Open WATCOM Warning on this...
+	return 0; // Open WATCOM Warns without this...
 }
 
 #endif

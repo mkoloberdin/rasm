@@ -1,3 +1,7 @@
+update v0.84
+- new directives STRUCT and ENDSTRUCT, ENDS to create structures
+- fix regression introduced with v0.75 and embedded usage (like Arkos Tracker II does)
+
 update v0.83
 - NOCODE output must increment current adress in all cases
 - new directives DR & DEFR to define REAL values (Amstrad firmware compatible)
