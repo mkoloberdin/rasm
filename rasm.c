@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.84"
+#define PROGRAM_VERSION   "0.85"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -81,16 +81,9 @@ const char __attribute__((section(".text"))) ver_version[]={ "\0$VER: "PROGRAM_N
 #undef __FILENAME__
 #define __FILENAME__ "rasm.c"
 
-enum e_compute_evaluation_type {
-E_COMPUTE_EVALUATION_GT,
-E_COMPUTE_EVALUATION_GE,
-E_COMPUTE_EVALUATION_LT,
-E_COMPUTE_EVALUATION_LE,
-E_COMPUTE_EVALUATION_NE,
-E_COMPUTE_EVALUATION_EQ,
-E_COMPUTE_EVALUATION_ASSIGN,
-E_COMPUTE_EVALUATION_COMPUTE_ONLY
-};
+/*******************************************************************
+ c o m p u t e   o p e r a t i o n s   f o r   c a l c u l a t o r
+*******************************************************************/
 
 enum e_compute_operation_type {
 E_COMPUTE_OPERATION_PUSH_DATASTC=0,
@@ -138,31 +131,35 @@ double value;
 int priority;
 };
 
+
+/***********************************************************************
+  e x p r e s s i o n   t y p e s   f o r   d e l a y e d   w r i t e
+***********************************************************************/
 enum e_expression {
-	E_EXPRESSION_J8,
-	E_EXPRESSION_0V8,
-	E_EXPRESSION_V8,
-	E_EXPRESSION_V16,
-	E_EXPRESSION_0V16,
-	E_EXPRESSION_0V32,
-	E_EXPRESSION_0VR,
-	E_EXPRESSION_IV8,
-	E_EXPRESSION_3V8,
-	E_EXPRESSION_IV16,
-	E_EXPRESSION_RST,
-	E_EXPRESSION_IM
+	E_EXPRESSION_J8,    /* relative 8bits jump */
+	E_EXPRESSION_0V8,   /* 8 bits value to current adress */
+	E_EXPRESSION_V8,    /* 8 bits value to current adress+1 */
+	E_EXPRESSION_V16,   /* 16 bits value to current adress+1 */
+	E_EXPRESSION_0V16,  /* 16 bits value to current adress */
+	E_EXPRESSION_0V32,  /* 32 bits value to current adress */
+	E_EXPRESSION_0VR,   /* AMSDOS real value (5 bytes) to current adress */
+	E_EXPRESSION_IV8,   /* 8 bits value to current adress+2 */
+	E_EXPRESSION_3V8,   /* 8 bits value to current adress+3 used with LD (IX+n),n */
+	E_EXPRESSION_IV16,  /* 16 bits value to current adress+2 */
+	E_EXPRESSION_RST,   /* the offset of RST is translated to the opcode */
+	E_EXPRESSION_IM     /* the interrupt mode is translated to the opcode */
 };
 
 struct s_expression {	
-	char *reference; /* backup when used inside loop (or macro?) */
-	int iw;          /* word index in the main wordlist */
-	int o;           /* offset de depart 0, 1 ou 3 selon l'opcode */
-	int ptr;         /* offset courant pour calculs relatifs */
-	int wptr;        /* where to write the result  */
-	enum e_expression zetype;
-	int lz;
-	int ibank;
-	int iorgzone;
+	char *reference;          /* backup when used inside loop (or macro?) */
+	int iw;                   /* word index in the main wordlist */
+	int o;                    /* offset de depart 0, 1 ou 3 selon l'opcode */
+	int ptr;                  /* offset courant pour calculs relatifs */
+	int wptr;                 /* where to write the result  */
+	enum e_expression zetype; /* type of delayed write */
+	int lz;                   /* lz zone */
+	int ibank;                /* ibank of expression */
+	int iorgzone;             /* org of expression */
 };
 
 struct s_expr_dico {
@@ -172,13 +169,13 @@ struct s_expr_dico {
 };
 
 struct s_label {
-	char *name; /* for local repeat */
-	int iw;   /* index of the word of label name */
-	int crc;  /* crc */
-	int ptr;  /* "physical" adress */
-	int lz;   /* is the label in a crunched section (or after)? */
-	int iorgzone;
-	int ibank; /* current CPR bank / always zero in classic mode */
+	char *name;   /* is alloced for local repeat or struct -> in this case iw=-1 */
+	int iw;       /* index of the word of label name */
+	int crc;      /* crc of the label name */
+	int ptr;      /* "physical" adress */
+	int lz;       /* is the label in a crunched section (or after)? */
+	int iorgzone; /* org of label */
+	int ibank;    /* current CPR bank / always zero in classic mode */
 };
 
 struct s_alias {
@@ -187,6 +184,10 @@ struct s_alias {
 	int crc,len;
 };
 
+
+/***********************************************************************
+   m e r k e l    t r e e s    f o r    l a b e l,  v a r,  a l i a s
+***********************************************************************/
 struct s_crclabel_tree {
 	struct s_crclabel_tree *radix[256];
 	struct s_label *label;
@@ -203,11 +204,13 @@ struct s_crcalias_tree {
 	int nalias,malias;
 };
 
-
+/*************************************************
+          m e m o r y    s e c t i o n
+*************************************************/
 struct s_lz_section {
 	int iw;
 	int memstart,memend;
-	int lzversion; /* 4 -> LZ4 / 48 -> LZ48 / 49 -> LZ49 / 8 -> Exomizer */
+	int lzversion; /* 4 -> LZ4 / 7 -> ZX7 / 48 -> LZ48 / 49 -> LZ49 / 8 -> Exomizer */
 	int iorgzone;
 	int ibank;
 	/* idx backup */
@@ -215,11 +218,6 @@ struct s_lz_section {
 	int ilabel;
 };
 
-struct s_hexbin {
-	unsigned char *data;
-	int datalen;
-	char *filename;
-};
 struct s_orgzone {
 	int ibank,protect;
 	int memstart,memend;
@@ -227,12 +225,18 @@ struct s_orgzone {
 	int nocode;
 };
 
-enum e_loop_style {
-E_LOOPSTYLE_REPEATN,
-E_LOOPSTYLE_REPEATUNTIL,
-E_LOOPSTYLE_WHILE
+/**************************************************
+         i n c b i n     s t o r a g e
+**************************************************/
+struct s_hexbin {
+	unsigned char *data;
+	int datalen;
+	char *filename;
 };
 
+/**************************************************
+          e d s k    m a n a g e m e n t        
+**************************************************/
 struct s_edsk_sector_global_struct {
 unsigned char track;
 unsigned char side;
@@ -289,6 +293,17 @@ struct s_save {
 	int dsk,face,iwdskname;
 };
 
+
+/********************
+      L O O P S
+********************/
+
+enum e_loop_style {
+E_LOOPSTYLE_REPEATN,
+E_LOOPSTYLE_REPEATUNTIL,
+E_LOOPSTYLE_WHILE
+};
+
 struct s_repeat {
 	int start;
 	int cpt;
@@ -305,6 +320,22 @@ struct s_whilewend {
 	int while_counter;
 };
 
+struct s_switchcase {
+	int refval;
+	int execute;
+	int casematch;
+};
+
+struct s_repeat_index {
+	int ifile;
+	int ol,oidx;
+	int cl,cidx;
+};
+
+
+/**************************************************
+          w o r d    p r o c e s s i n g
+**************************************************/
 struct s_wordlist {
 	char *w;
 	int l,t,e; /* e=1 si egalite dans le mot */
@@ -326,17 +357,34 @@ struct s_macro_position {
 	int start,end,value;
 };
 
-struct s_switchcase {
-	int refval;
-	int execute;
-	int casematch;
-};
-
 /* preprocessing only */
 struct s_macro_fast {
 	char *mnemo;
 	int crc;
 };
+
+struct s_math_keyword {
+	char *mnemo;
+	int crc;
+	enum e_compute_operation_type operation;
+};
+
+struct s_expr_word {
+	char *w;
+	int aw;
+	int op;
+	int comma;
+	int fct;
+	double v;
+};
+
+struct s_listing {
+	char *listing;
+	int ifile;
+	int iline;
+};
+
+
 
 #ifdef RASM_THREAD
 struct s_rasm_thread {
@@ -350,6 +398,10 @@ struct s_rasm_thread {
 };
 #endif
 
+
+/*********************************************************
+            S N A P S H O T     E X P O R T
+*********************************************************/
 struct s_snapshot_symbol {
 	unsigned char size;
 	unsigned char name[256];
@@ -461,6 +513,10 @@ struct s_breakpoint {
 	int bank;
 };
 
+
+/*********************************
+        S T R U C T U R E S
+*********************************/
 struct s_rasmstructfield {
 	char *name;
 	int offset;
@@ -475,6 +531,9 @@ struct s_rasmstruct {
 	int irasmstructfield,mrasmstructfield;
 };
 
+/*******************************************
+        G L O B A L     S T R U C T
+*******************************************/
 struct s_assenv {
 	/* current memory */
 	int maxptr;
@@ -507,6 +566,8 @@ struct s_assenv {
 	int irasmstruct,mrasmstruct;
 	int getstruct;
 	int backup_outputadr,backup_codeadr;
+	char *backup_filename;
+	int backup_line;
 	struct s_rasmstruct *rasmstructalias;
 	int irasmstructalias,mrasmstructalias;
 	/* expressions */
@@ -591,45 +652,6 @@ struct s_asm_keyword {
 	int crc;
 	void (*makemnemo)(struct s_assenv *ae);
 };
-
-struct s_math_keyword {
-	char *mnemo;
-	int crc;
-	enum e_compute_operation_type operation;
-};
-
-struct s_expr_word {
-	char *w;
-	int aw;
-	int op;
-	int comma;
-	int fct;
-	double v;
-};
-
-struct s_lz_zone {
-	unsigned char *mem;
-	int lng;
-};
-
-struct s_symbol {
-	int crc;
-	char *zename;
-	unsigned short int adr;
-};
-
-struct s_repeat_index {
-	int ifile;
-	int ol,oidx;
-	int cl,cidx;
-};
-
-struct s_listing {
-	char *listing;
-	int ifile;
-	int iline;
-};
-
 
 struct s_math_keyword math_keyword[]={
 {"SIN",0,E_COMPUTE_OPERATION_SIN},
@@ -2280,6 +2302,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 							/* getbank hack */
 							if (varbuffer[minusptr]!='{') {
 								bank=0;
+								page=0;
 							} else if (strncmp(varbuffer+minusptr,"{BANK}",6)==0) {
 								bank=6;
 								page=0;
@@ -2754,7 +2777,6 @@ double ComputeExpression(struct s_assenv *ae,char *expr, int ptr, int didx, int 
 	#define FUNC "ComputeExpression"
 
 	char *ptr_exp,*ptr_exp2,backupeval;
-	enum e_compute_evaluation_type wtd;
 	int crc,idic,idx=0,ialias;
 	double v,vl;
 	struct s_alias curalias;
@@ -4290,6 +4312,11 @@ void PushLabel(struct s_assenv *ae)
 	
 	if (ae->getstruct) {
 		struct s_rasmstructfield rasmstructfield={0};
+		if (ae->wl[ae->idx].w[0]=='@') {
+			rasm_printf(ae,"[%s] Error line %d - Please no local label in a struct [%s]\n",GetExpFile(ae,0),ae->wl[ae->idx].l,ae->wl[ae->idx].w);
+			MaxError(ae);
+			return;
+		}
 		/* copy label+offset in the structure */
 		rasmstructfield.name=TxtStrDup(ae->wl[ae->idx].w);
 		rasmstructfield.offset=ae->codeadr;
@@ -4306,7 +4333,6 @@ void PushLabel(struct s_assenv *ae)
 	} else {
 		/* labels locaux */
 		if (ae->wl[ae->idx].w[0]=='@' && (ae->ir || ae->iw || ae->imacro)) {
-			
 			curlabel.iw=-1;
 			curlabelname=curlabel.name=MakeLocalLabel(ae,ae->wl[ae->idx].w,NULL);
 			curlabel.crc=GetCRC(curlabel.name);
@@ -8151,7 +8177,7 @@ void __STRUCT(struct s_assenv *ae) {
 	if (!ae->wl[ae->idx].t) {
 		if (ae->wl[ae->idx+1].t) {
 			/**************************************************
-				s t r u c t u r e     d e c l a r a t i o n
+			    s t r u c t u r e     d e c l a r a t i o n
 			**************************************************/
 			if (!ae->getstruct) {
 				/* cannot be an existing label or EQU (but variable ok) */
@@ -8160,8 +8186,8 @@ void __STRUCT(struct s_assenv *ae) {
 					rasm_printf(ae,"[%s] Error line %d - STRUCT name must be different from existing labels ou aliases\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
 					MaxError(ae);
 				} else {
-					/* faire un test des mots réservés */
-
+					ae->backup_filename=GetCurrentFile(ae);
+					ae->backup_line=ae->wl[ae->idx].l;
 					ae->backup_outputadr=ae->outputadr;
 					ae->backup_codeadr=ae->codeadr;
 					ae->getstruct=1;
@@ -8176,7 +8202,7 @@ void __STRUCT(struct s_assenv *ae) {
 					ae->idx++;
 				}
 			} else {
-				rasm_printf(ae,"[%s] Error line %d - STRUCT cannot be declared inside another struct\n",GetCurrentFile(ae),ae->wl[ae->idx].l);
+				rasm_printf(ae,"[%s] Error line %d - STRUCT cannot be declared inside previous opened STRUCT [%s] Line %d\n",GetCurrentFile(ae),ae->wl[ae->idx].l,ae->backup_filename,ae->backup_line);
 				MaxError(ae);
 			}
 		} else {
@@ -8933,6 +8959,11 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 		rasm_printf(ae,"%d [%s] L%d [%s] fin de la liste de mots\n",ae->idx,ae->filename[wordlist[ae->idx].ifile],wordlist[ae->idx].l,wordlist[ae->idx].w);
 	}
 
+	/* end of assembly, check there is no opened struct */
+	if (ae->getstruct) {
+		rasm_printf(ae,"[%s] Error line %d - STRUCT declaration was not closed\n",ae->backup_filename,ae->backup_line);
+		MaxError(ae);
+	}
 	/* end of assembly, close the last ORG zone */
 	if (ae->io) {
 		ae->orgzone[ae->io-1].memend=ae->outputadr;
@@ -10606,7 +10637,6 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 								Automate['\t']=1;
 								ispace=0;
 								texpr=1;
-								macro_trigger=0;
 //printf("macro trigger w=[%s]\n",curw.w);								
 								/* add macro name to instruction pool for preprocessor but not struct or write */
 								if (macro_trigger=='M') {
@@ -10614,6 +10644,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 									curmacrofast.crc=GetCRC(curw.w);
 									ObjectArrayAddDynamicValueConcat((void**)&MacroFast,&idxmacrofast,&maxmacrofast,&curmacrofast,sizeof(struct s_macro_fast));	
 								}
+								macro_trigger=0;
 							} else {
 								int keymatched=0;
 								if ((ifast=ae->fastmatch[(int)curw.w[0]])!=-1) {
