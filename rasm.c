@@ -1,5 +1,5 @@
 #define PROGRAM_NAME      "RASM"
-#define PROGRAM_VERSION   "0.85"
+#define PROGRAM_VERSION   "0.86"
 #define PROGRAM_DATE      "xx/04/2018"
 #define PROGRAM_COPYRIGHT "© 2017 BERGE Edouard (roudoudou) "
 
@@ -550,6 +550,8 @@ struct s_assenv {
 	struct s_wordlist *wl;
 	int nbword;
 	int idx,stage;
+	char *label_filename;
+	int label_line;
 	char **filename;
 	int ifile,maxfile;
 	int nberr,flux,verbose;
@@ -911,6 +913,46 @@ char *TxtReplace(char *in_str, char *in_substr, char *out_substr, int recurse)
 }
 #endif
 
+#ifndef min
+#define min(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
+#endif
+
+/* Levenshtein implementation by TheRayTracer https://gist.github.com/TheRayTracer/2644387 */
+int _internal_LevenshteinDistance(char *s,  char *t)
+{
+	int i,j,n,m,*d;
+	int im,jn;
+	int r;
+	
+   n=strlen(s)+1;
+   m=strlen(t)+1;
+   d=malloc(n*m*sizeof(int));
+   memset(d, 0, sizeof(int) * n * m);
+
+   for (i = 1, im = 0; i < m; i++, im++)
+   {
+      for (j = 1, jn = 0; j < n; j++, jn++)
+      {
+         if (s[jn] == t[im])
+         {
+            d[(i * n) + j] = d[((i - 1) * n) + (j - 1)];
+         }
+         else
+         {
+            d[(i * n) + j] = min(d[(i - 1) * n + j] + 1, /* A deletion. */
+                                 min(d[i * n + (j - 1)] + 1, /* An insertion. */
+                                     d[(i - 1) * n + (j - 1)] + 1)); /* A substitution. */
+         }
+      }
+   }
+   r = d[n * m - 1];
+   free(d);
+   return r;
+}
+
 #ifdef RASM_THREAD
 /*
  threads used for crunching
@@ -1204,6 +1246,61 @@ int StringIsQuote(char *w)
 	return 0;
 }
 
+char *StringLooksLikeMacro(struct s_assenv *ae, char *str, int *retscore)
+{
+	#undef FUNC
+	#define FUNC "StringLooksLikeMacro"
+	
+	char *ret=NULL;
+	int i,curs,score=3;
+	/* search in macros */
+	for (i=0;i<ae->imacro;i++) {
+		curs=_internal_LevenshteinDistance(ae->macro[i].mnemo,str);
+		if (curs<score) {
+			score=curs;
+			ret=ae->macro[i].mnemo;
+		}
+	}
+	if (retscore) *retscore=score;
+	return ret;
+}	
+
+char *StringLooksLike(struct s_assenv *ae, char *str)
+{
+	#undef FUNC
+	#define FUNC "StringLooksLike"
+
+	char *ret=NULL;
+	int i,curs,score=3;
+
+	/* search in variables */
+	//ExportDicoTree(ae,TMP_filename,"%s #%04X\n");
+
+	/* search in labels */
+	for (i=0;i<ae->il;i++) {
+		if (!ae->label[i].name) {
+			curs=_internal_LevenshteinDistance(ae->wl[ae->label[i].iw].w,str);
+			if (curs<score) {
+				score=curs;
+				ret=ae->wl[ae->label[i].iw].w;
+			}
+		}
+		//sprintf(symbol_line,"%s #%04X\n",ae->label[i].name,ae->label[i].ptr); pas de test sur les locaux
+	}
+	
+	/* search in alias */
+	for (i=0;i<ae->ialias;i++) {
+		curs=_internal_LevenshteinDistance(ae->alias[i].alias,str);
+		if (curs<score) {
+			score=curs;
+			ret=ae->alias[i].alias;
+		}
+	}
+	
+//	char *StringLooksLikeMacro(char *str, int *retscore);
+	return ret;
+}
+
 void MaxError(struct s_assenv *ae)
 {
 	#undef FUNC
@@ -1220,6 +1317,9 @@ char *GetExpFile(struct s_assenv *ae,int didx){
 	#undef FUNC
 	#define FUNC "GetExpFile"
 	
+	if (ae->label_filename) {
+		return ae->label_filename;
+	}
 	if (!didx) {
 		return ae->filename[ae->wl[ae->idx].ifile];
 	} else {
@@ -1234,6 +1334,8 @@ char *GetExpFile(struct s_assenv *ae,int didx){
 int GetExpLine(struct s_assenv *ae,int didx){
 	#undef FUNC
 	#define FUNC "GetExpLine"
+
+	if (ae->label_line) return ae->label_line;
 	
 	if (!didx) {
 		return ae->wl[ae->idx].l;
@@ -2136,6 +2238,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 			/************************************
 			              V A L U E
 			************************************/
+//printf("varbuffer=[%s] c=%c\n",varbuffer,c);
 			if (varbuffer[0]=='-') minusptr=1; else minusptr=0;
 			/* constantes ou variables/labels */
 			switch (varbuffer[minusptr]) {
@@ -2285,6 +2388,7 @@ double ComputeExpressionCore(struct s_assenv *ae,char *original_zeexpression,int
 								rasm_printf(ae,"[%s] Error line %d - expression [%s] - %s is a reserved keyword!\n",GetExpFile(ae,didx),GetExpLine(ae,didx),TradExpression(zeexpression),math_keyword[imkey].mnemo);
 								MaxError(ae);
 								curval=0;
+								idx++;
 							}
 							break;
 						}
@@ -4232,7 +4336,7 @@ void InsertLabelToTree(struct s_assenv *ae, struct s_label *label)
 	ObjectArrayAddDynamicValueConcat((void**)&curlabeltree->label,&curlabeltree->nlabel,&curlabeltree->mlabel,label,sizeof(struct s_label));
 }
 
-/* use by structure mechanism to add fake labels */
+/* use by structure mechanism and label import to add fake labels */
 void PushLabelLight(struct s_assenv *ae, struct s_label *curlabel) {
 	#undef FUNC
 	#define FUNC "PushLabelLight"
@@ -4241,7 +4345,7 @@ void PushLabelLight(struct s_assenv *ae, struct s_label *curlabel) {
 	
 	/* PushLabel light */
 	if ((searched_label=SearchLabel(ae,curlabel->name,curlabel->crc))!=NULL) {
-		rasm_printf(ae,"[%s] Error line %d - Structure insertion caused duplicate label [%s]\n",GetExpFile(ae,0),GetExpLine(ae,0),curlabel->name);
+		rasm_printf(ae,"[%s] Error line %d - %s caused duplicate label [%s]\n",GetExpFile(ae,0),GetExpLine(ae,0),ae->idx?"Structure insertion":"Label import",curlabel->name);
 		MaxError(ae);
 		MemFree(curlabel->name);
 	} else {
@@ -4305,8 +4409,14 @@ void PushLabel(struct s_assenv *ae)
 				rasm_printf(ae,"[%s] Error line %d - Cannot use reserved word [%s] for label\n",GetExpFile(ae,0),ae->wl[ae->idx].l,ae->wl[ae->idx].w);
 				MaxError(ae);
 				return;
-			}
+			}			
 			break;
+		case 4:
+			if (strcmp(ae->wl[ae->idx].w,"VOID")==0) {
+				rasm_printf(ae,"[%s] Error line %d - Cannot use reserved word [%s] for label\n",GetExpFile(ae,0),ae->wl[ae->idx].l,ae->wl[ae->idx].w);
+				MaxError(ae);
+				return;
+			}
 		default:break;
 	}
 	
@@ -5421,7 +5531,7 @@ void _NOP(struct s_assenv *ae) {
 
 	if (ae->wl[ae->idx].t) {
 		___output(ae,0x00);
-	} else if (!ae->wl[ae->idx].t && ae->wl[ae->idx].t==1) {
+	} else if (!ae->wl[ae->idx].t && ae->wl[ae->idx+1].t==1) {
 		ExpressionFastTranslate(ae,&ae->wl[ae->idx+1].w,0);
 		o=RoundComputeExpressionCore(ae,ae->wl[ae->idx+1].w,ae->codeadr,0);
 		if (o>=0) {
@@ -5777,30 +5887,48 @@ void _LD(struct s_assenv *ae) {
 				}
 				break;
 			case CRC_HL:
-				if (StringIsMem(ae->wl[ae->idx+2].w)) {
-					___output(ae,0x2A);
-					PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
-				} else {
-					___output(ae,0x21);
-					PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
+				switch (GetCRC(ae->wl[ae->idx+2].w)) {
+					case CRC_BC:___output(ae,0x60);___output(ae,0x69);break;
+					case CRC_DE:___output(ae,0x62);___output(ae,0x6B);break;
+					case CRC_HL:___output(ae,0x64);___output(ae,0x6D);break;
+					default:
+					if (StringIsMem(ae->wl[ae->idx+2].w)) {
+						___output(ae,0x2A);
+						PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
+					} else {
+						___output(ae,0x21);
+						PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
+					}
 				}
 				break;
 			case CRC_BC:
-				if (StringIsMem(ae->wl[ae->idx+2].w)) {
-					___output(ae,0xED);___output(ae,0x4B);
-					PushExpression(ae,ae->idx+2,E_EXPRESSION_IV16);
-				} else {
-					___output(ae,0x01);
-					PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
+				switch (GetCRC(ae->wl[ae->idx+2].w)) {
+					case CRC_BC:___output(ae,0x40);___output(ae,0x49);break;
+					case CRC_DE:___output(ae,0x42);___output(ae,0x4B);break;
+					case CRC_HL:___output(ae,0x44);___output(ae,0x4D);break;
+					default:
+					if (StringIsMem(ae->wl[ae->idx+2].w)) {
+						___output(ae,0xED);___output(ae,0x4B);
+						PushExpression(ae,ae->idx+2,E_EXPRESSION_IV16);
+					} else {
+						___output(ae,0x01);
+						PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
+					}
 				}
 				break;
 			case CRC_DE:
-				if (StringIsMem(ae->wl[ae->idx+2].w)) {
-					___output(ae,0xED);___output(ae,0x5B);
-					PushExpression(ae,ae->idx+2,E_EXPRESSION_IV16);
-				} else {
-					___output(ae,0x11);
-					PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
+				switch (GetCRC(ae->wl[ae->idx+2].w)) {
+					case CRC_BC:___output(ae,0x50);___output(ae,0x59);break;
+					case CRC_DE:___output(ae,0x52);___output(ae,0x5B);break;
+					case CRC_HL:___output(ae,0x54);___output(ae,0x5D);break;
+					default:
+					if (StringIsMem(ae->wl[ae->idx+2].w)) {
+						___output(ae,0xED);___output(ae,0x5B);
+						PushExpression(ae,ae->idx+2,E_EXPRESSION_IV16);
+					} else {
+						___output(ae,0x11);
+						PushExpression(ae,ae->idx+2,E_EXPRESSION_V16);
+					}
 				}
 				break;
 			case CRC_IX:
@@ -7351,7 +7479,6 @@ struct s_wordlist *__MACRO_EXECUTE(struct s_assenv *ae, int imacro) {
 		/* macro replaced, need to rollback index */
 		//ae->idx--;
 	}
-
 	/* a chaque appel de macro on incremente le compteur pour les labels locaux */
 	ae->macrocounter++;
 
@@ -8820,7 +8947,7 @@ int Assemble(struct s_assenv *ae, unsigned char **dataout, int *lenout)
 	for (icrc=0;instruction[icrc].mnemo[0];icrc++) instruction[icrc].crc=GetCRC(instruction[icrc].mnemo);
 	for (icrc=0;math_keyword[icrc].mnemo[0];icrc++) math_keyword[icrc].crc=GetCRC(math_keyword[icrc].mnemo);
 
-	if (ae->as80) {
+	if (ae->as80==1) { /* not for UZ80 */
 		for (icrc=0;instruction[icrc].mnemo[0];icrc++) {
 			if (strcmp(instruction[icrc].mnemo,"DEFB")==0 || strcmp(instruction[icrc].mnemo,"DB")==0) {
 				instruction[icrc].makemnemo=_DEFB_as80;
@@ -9891,7 +10018,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	int ilisting=0,maxlisting=0;
 	
 	char **listing_include=NULL;
-	int i,l=0,idx=0,c=0,li,le;
+	int i,j,l=0,idx=0,c=0,li,le;
 	char Automate[256]={0};
 	struct s_hexbin curhexbin;
 	char *newlistingline=NULL;
@@ -10023,19 +10150,33 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 		rasm 		sprintf(symbol_line,"%s #%X B%d\n",ae->wl[ae->label[i].iw].w,ae->label[i].ptr,ae->label[i].ibank>31?0:ae->label[i].ibank);
 	*/
 	if (labelfilename) {
-		for (i=0;labelfilename[i] && labelfilename[i][0];i++) {
-			rasm_printf(ae,"Label import from [%s]\n",labelfilename[i]);
-			labelines=FileReadLines(labelfilename[i]);
+		for (j=0;labelfilename[j] && labelfilename[j][0];j++) {
+			rasm_printf(ae,"Label import from [%s]\n",labelfilename[j]);
+			ae->label_filename=labelfilename[j];
+			ae->label_line=1;
+			labelines=FileReadLines(labelfilename[j]);
 			i=0;
 			while (labelines[i]) {
-				if ((labelsep1=strstr(labelines[i]," EQU 0"))!=NULL) {
+				/* upper case */
+				for (j=0;labelines[i][j];j++) labelines[i][j]=toupper(labelines[i][j]);
+
+				if ((labelsep1=strstr(labelines[i],": EQU 0"))!=NULL) {
+					/* sjasm */
+					*labelsep1=0;
+					curlabel.name=labelines[i];
+					curlabel.iw=-1;
+					curlabel.crc=GetCRC(curlabel.name);
+					curlabel.ptr=strtol(labelsep1+6,NULL,16);
+					PushLabelLight(ae,&curlabel);
+				} else if ((labelsep1=strstr(labelines[i]," EQU 0"))!=NULL) {
 					/* pasmo */
 					*labelsep1=0;
 					curlabel.name=labelines[i];
 					curlabel.iw=-1;
 					curlabel.crc=GetCRC(curlabel.name);
 					curlabel.ptr=strtol(labelsep1+6,NULL,16);
-					ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,&curlabel,sizeof(curlabel));
+					//ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,&curlabel,sizeof(curlabel));
+					PushLabelLight(ae,&curlabel);
 				} else if ((labelsep1=strstr(labelines[i]," "))!=NULL) {
 					/* winape / rasm */
 					if (*(labelsep1+1)=='#') {
@@ -10044,13 +10185,17 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 						curlabel.iw=-1;
 						curlabel.crc=GetCRC(curlabel.name);
 						curlabel.ptr=strtol(labelsep1+2,NULL,16);
-						ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,&curlabel,sizeof(curlabel));
+						//ObjectArrayAddDynamicValueConcat((void **)&ae->label,&ae->il,&ae->ml,&curlabel,sizeof(curlabel));
+						PushLabelLight(ae,&curlabel);
 					}
 				}
 				i++;
+				ae->label_line++;
 			}
 			MemFree(labelines);
 		}
+		ae->label_filename=NULL;
+		ae->label_line=0;
 	}
 	/* 32 CPR default roms but 36 max snapshot RAM pages + one workspace */
 	for (i=0;i<37;i++) {
@@ -10070,11 +10215,20 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 
 	if (filename && !strstr(filename,".") && !FileExists(filename)) {
 		/* pas d'extension, fichier non trouvé */
+		l=strlen(filename);
 		filename=MemRealloc(filename,l+5);
 		strcat(filename,".asm");
 		if (!FileExists(filename)) {
-			TxtReplace(filename,".asm",".z80",0);
+			TxtReplace(filename,".asm",".z80",0); /* no realloc with this */
+			if (!FileExists(filename)) {
+				filename[l]=0;
+			}
 		}
+	}
+
+	if (filename && !FileExists(filename)) {
+		rasm_printf(ae,"Cannot find file [%s]\n",filename);
+		exit(-1802);
 	}
 	
 	rasm_printf(ae,"Pre-processing [%s]\n",filename);
@@ -10483,7 +10637,7 @@ struct s_assenv *PreProcessing(char *filename, int flux, const char *datain, int
 	curw.e=0;
 	ObjectArrayAddDynamicValueConcat((void**)&wordlist,&nbword,&maxword,&curw,sizeof(curw));
 
-	/* pour les calculs d'adresses avec IX et IY on enregistre deux labels bidons du meme nom */
+	/* pour les calculs d'adresses avec IX et IY on enregistre deux variables bidons du meme nom */
 	curw.e=2;
 	curw.w=TxtStrDup("IX~0");
 	ObjectArrayAddDynamicValueConcat((void**)&wordlist,&nbword,&maxword,&curw,sizeof(curw));
@@ -11361,6 +11515,7 @@ void Usage(int help)
 		printf("COMPATIBILITY:\n");
 		printf("-m   maxam style calculations\n");
 		printf("-ass AS80 behaviour mimic (see doc)\n");
+		printf("-uz  UZ80 (see doc for that too)\n");
 		printf("BANKING:\n");
 		printf("-c  cartridge/snapshot summary\n");
 		printf("EDSK generation/update:\n");
@@ -11529,6 +11684,8 @@ int ParseOptions(char **argv,int argc,char **filename, int *export_sym, int *ver
 
 	if (strcmp(argv[i],"-autotest")==0) {
 		RasmAutotest();
+	} else if (strcmp(argv[i],"-uz")==0) {
+		*as80=2;
 	} else if (strcmp(argv[i],"-ass")==0) {
 		*as80=1;
 	} else if (strcmp(argv[i],"-eb")==0) {

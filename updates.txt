@@ -1,3 +1,10 @@
+update v0.86
+- fix many bugs in label import
+- fix multi-nops
+- fix automatic extension for primary source
+- fix infinite loop when error on reserved keyword in an expression
+- shortcuts LD BC/DE/HL,BC/DE/HL (uz80 style)
+
 update v0.85
 - fix some regressions introduced by STRUCT code modifications
 
