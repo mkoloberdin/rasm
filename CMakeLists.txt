@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.7)
 project(rasm)
 
-SET(RASM_VERSION 0.59)
-
 set(SOURCE_FILES
         rasm.c
         rasm.h
