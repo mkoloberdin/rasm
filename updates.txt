@@ -1,9 +1,99 @@
+update v0.99
+- new directive UNDEF
+- bugfix memory leaks
+- bugfix calculations with a function followed by two or more opened parenthesis
+
+update v0.98
+- bugfix with snapshot v2 memory size detection
+- new optional parameter to get file size when load and crunch on the fly
+- new option to remove warnings
+- new fake instructions RR,RL,SRL,SRA,SLL,SLA with 16 bits (BC,DE,HL) registers
+- preprocessing does not allow empty parameter to avoid confusion
+- extended error may suggest a name if a variable/label/alias looks similar to a 'not found' value
+
+update v0.97
+- bugfix conditionnal code inhibition with macro declaration
+- better alias infinite recursivity detection
+
+update v0.96
+- bugfix memory leak in tag translation with PRINT directive
+- bugfix negative offset with INCBIN
+- bugfix autotests memory handling
+- added include path in command line
+
+update v0.95
+- allow spaces in tags inside strings with PRINT directive
+- display warning if you try to export symbols or breakpoints with snapshot version 2
+- proximity label beginning with BRK will generate an exportable breakpoint
+- new enhanced LD instructions (see online documentation)
+
+update v0.94
+- bugfix using macro parameter inside print quote
+- bugfix multiple memory leak with tag replacement
+- bugfix command line side effect with wrong option
+- better hack in expression calculator for expression beginning with negative value
+- better equality processing in expression calculator
+- dependencies export do not display preprocessing message anymore
+
+update v0.93
+- bugfix RUN gate array configuration
+- overriding an alias with a label will trigger an error
+- PRINT directive may use escaped chars in strings
+- tags BANK,PAGE,PAGESET may be used with current adress $
+
+update v0.92
+- bugfix PAGE tag when using BANK in snapshot mode
+
+update v0.91
+- bugfix school case with crunched block
+- bugfix proximity labels when using loops or macros
+- bugfix imbricated IFUSED/IFNUSED
+- new directive FAIL will print a message before exiting with an error flag
+- label usage may use formula
+- escaped codes support in strings (disregarding the current charset)
+- PRINT directive may compute formula in strings when using curly brackets
+- RUN directive may set the gate array configuration for snapshots
+- generated label with negative index will trigger an error
+- overriding an alias with a variable will trigger an error
+- overriding a variable with an alias will trigger an error
+- missing ENDIF at the end of the source will trigger an error
+
+update v0.90
+- PROTECT directive does not increase automatic binary size anymore
+- bugfix memory leak with proximity labels
+- proximity label properties also for EQU aliases
+- label declaration may use formula
+
+update v0.89
+- bugfix dependencies export
+- multiple bugfix in preprocessor
+- simplify path of dependencies when possible
+- enhanced ASSERT may PRINT additional parameters
+
+update v0.88
+- bugfix another cases during preprocessing
+
+update v0.87
+- new proximity labels
+- rasm is able to use variables inside label names
+- INCBIN directive enhanced for WAV import as a CPC sample or DMA list
+- REPEAT directive may export internal counter to a variable
+- new directive IFUSED & IFNUSED
+- new math operator ! for NOT
+- new math function PSGVALUE
+- rasm return 1 to shell when there is error(s)
+- new options to export dependencies (makefile style)
+- new option to define variable(s) from command line
+- new option for extended error messages
+- bugfix cases during preprocessing
+- bugfix tags PAGE & PAGESET
+- new autotests embedded in Rasm in order to reduce regressions
+
 update v0.86
 - fix many bugs in label import
 - fix multi-nops
 - fix automatic extension for primary source
 - fix infinite loop when error on reserved keyword in an expression
-- shortcuts LD BC/DE/HL,BC/DE/HL (uz80 style)
 
 update v0.85
 - fix some regressions introduced by STRUCT code modifications

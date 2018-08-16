@@ -1,0 +1,1390 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Rasm assembler v0.96 documentation</title>
+		<meta name="keywords" lang="en-us" content="Z80, assembler, rasm, Amstrad">
+		<meta name="keywords" lang="fr" content="Z80, assembleur, rasm, Amstrad">
+		<meta name="author" content="Edouard BERGE">
+		<meta name="version" content="0.96">
+		<meta name="licence" content="MIT">
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<style type="text/css">
+			body {background-color:#FFF; color:#111;}
+			code {color:#118;font-weight:lighter;}
+			td,th {padding:3px;}
+			A:link, A:visited, A:active {color:#114;text-decoration:none;}
+			A:active {text-decoration:underline;}
+			A:hover {color:#226;text-decoration:underline;}
+			#titre {display:block;width:auto;font-weight:900;text-align:center;padding:15px;border:1px solid black;line-height:0;}
+			#licence {font-weight:lighter;padding:20px;border:1px solid black;}
+			.titre1 {clear:both;font-weight:bolder;margin:25px;text-decoration:underline;}
+			.titre2 {clear:both;font-weight:bold;margin:25px;}
+			.titre3 {clear:both;font-weight:bold;margin:25px;padding-left:30px;}
+			.invisibletable {border:0px solid transparent;padding:10px;}
+			.visibletable {border:1px solid black;margin:5px;border-collapse: collapse;}
+			.multicol {column-width: auto; column-count: auto; -moz-column-width: auto; -moz-column-count: auto; -webkit-column-width: auto; -webkit-column-count: auto; -webkit-column-gap: 20px; -moz-column-gap: 20px; column-gap: 20px; }
+		</style>
+	</head>
+	<body>
+	<div id="main">
+		<div id="titre"><h2>RASM v0.96</h2><br><h4>roudoudou Z80 assembler</h4></div>
+		<!-- ****************************************************** -->
+		<!--         T A B L E   D E S   M A T I E R E S            -->
+		<!-- ****************************************************** -->
+		<div id="index" class="multicol"><div class="titre1"><h1>Contents<h1></div>
+			<a href="#Introduction">Introduction</a><br>
+			<a href="#Fonctionnalites">Features</a><br>
+			<a href="#Installation">Installation</a><br>
+			<a href="#Compilation">Compilation</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CompilationLinux">Linux Compilation</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CompilationWindows">Windows Compilation</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CompilationDOS">DOS Compilation</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CompilationMorphos">Morphos Compilation</a><br>
+
+			<a href="#Comportement">Behaviour</a><br>
+			<a href="#Commandline">command line</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#FileOpt">File options</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#ExportOpt">EDSK file export</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#ExportSna">Snapshot file export</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#SymbOpt">Symbol options</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#Depend">Dependencies options</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CompOpt">Compatibility options</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#DevOpt">Dev options (internal use)</a><br>
+
+			<a href="#Syntax">Format</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#GeneraliteFormat">General</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CommentaireFormat">Comments</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LiteraleFormat">Literal values</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CaractereFormat">Allowed characters</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#FichierFormat">Files</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LabelFormat">Labels</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#ExpLocalLabelFormat">Proximity labels</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LocalLabelFormat">Local labels</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LabelTagFormat">Tags specific to labels or structures</a><br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#TagBANK">{BANK}</a><br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#TagPAGE">{PAGE}</a><br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#TagPAGESET">{PAGESET}</a><br>
+			&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="#TagSIZEOF">{SIZEOF}</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#Coloration">Syntax coloring in VIM</a><br>
+
+			<a href="#Expressions">Expressions</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#Operateurs">Calculation operators</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#Priorites">Operators priorities</a><br>
+
+			<a href="#Variables">Variables</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#Statiques">Statics</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#Dynamiques">Dynamics</a><br>
+
+			<a href="#DirectivesM">Memory directives</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#ALIGN">ALIGN</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#BANK">BANK</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#BANKSET">BANKSET</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LIMIT">LIMIT</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#ORG">ORG</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#PROTECT">PROTECT</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#WRITE">WRITE DIRECT</a><br>
+
+			<a href="#DirectivesD">Data directives</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#CHARSET">CHARSET</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#DEFB">DEFB</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#DEFW">DEFW</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#DEFI">DEFI</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#DEFR">DEFR</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#DEFS">DEFS</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#EQU">EQU</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#STR">STR</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#STRUCT">STRUCT</a><br>
+
+			<a href="#DirectivesI">Import and compression directives</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#INCLUDE">INCLUDE</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#INCBIN">INCBIN</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#INCL48">INCL48, INCL49, INCLZ4, INCZX7, INCEXO</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LZ">LZ48, LZ49, LZ4, LZX7, LZEXO</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LZCLOSE">LZCLOSE</a><br>
+
+			<a href="#DirectivesC">Conditionnal code directives</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#ASSERT">ASSERT</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#IFTHEN">IF IFNOT THEN ELSEIF ELSE ENDIF</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#IFDEF">IFDEF, IFNDEF</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#IFUSED">IFUSED, IFNUSED</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#MACRO">MACRO</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#PRINT">PRINT</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#FAIL">FAIL</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#REPEAT">REPEAT, REND, UNTIL</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#SWITCH">SWITCH, CASE, DEFAULT, BREAK, ENDSWITCH</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#STOP">STOP</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#WHILE">WHILE, WEND</a><br>
+
+			<a href="#DirectivesF">File output directives</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#AMSDOS">AMSDOS</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#BREAKPOINT">BREAKPOINT</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#BUILDCPR">BUILDCPR</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#BUILDSNA">BUILDSNA</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#RUN">RUN</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#SAVE">SAVE</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#SETCPC">SETCPC</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#SETCRTC">SETCRTC</a><br>
+
+			<a href="#DirectivesU">Useless directives</a><br>
+			&nbsp;&nbsp;&nbsp;- <a href="#LIST">LIST, NOLIST, LET</a><br>
+
+			<a href="#Instructions">Instruction set</a><br>
+			<a href="#Limitations">Limitations</a><br>
+			
+		</div>
+		<!-- ****************************************************** -->
+		<!--                C H A P I T R E S                       -->
+		<!-- ****************************************************** -->
+		<div id="Introduction"><div class="titre1">Introduction</div>
+			During the making of my first big demo <a href="http://www.pouet.net/prod.php?which=72279" target=_top>CRTC³</a>, available assemblers were too slow and too limited. The demo has 250'000 words (out of comments), 35'000 labels and 60'000 expressions. I needed a damn fast assembler with cartridge management, banking facilities and integrated crunched sections (to avoid import/export and multi-pass).<br><br>
+			
+			18 years ago i wrote a small assembler. I didn't use it back in the days cause it was very limited. Nevertheless, i took up the mono-pass concept of it.<br><br>
+			
+			Rasm uses proven concepts (merkel trees, many caches, grouped allocs) and a linear conception because recursivity slow down anything. The performances in real conditions are really fast, especially with huge projects.<br><br>
+			
+			Nowadays Rasm is used on big projects:<br>
+			&nbsp;- Ghost'n Goblins by Golem13<br>
+			&nbsp;- <a href="" target=_top>Arkos Tracker II</a> by Targhan (embedded in the software)<br>
+			<br>
+			<br>
+			Rasm is under <a href="#Licence">MIT</a> licence.
+		</div>
+		<div id="Fonctionnalites"><div class="titre1">Fonctionnalities</div>
+			<ul>
+			<li>ultra-fast compilation</li>
+			<li>common compressors included</li>
+			<li>binary, snapshot, floppy, cartridge export</li>
+			<li>symbols import/export</li>
+			<li>overwriting control</li>
+			<li>unlimited memory spaces where labels are shared</li>
+			<li>dedicated directives for memory/ROM management</li>
+			<li>all instructions supported</li>
+			<li>macros, conditionnal code, unlimited loops, local labels, switch/case</li>
+			<li>double precision calculation with correct rounding</li>
+			<li>optionnal compatibility with Maxam or AS80</li>
+			</ul>
+		</div>
+		<div id="Installation"><div class="titre1">Installation</div>
+			Rasm is a standalone executable, there is no installation.
+		</div>
+		<div id="Compilation"><div class="titre1">Compilation</div>
+			<div id="CompilationLinux"><div class="titre2">Linux compilation</div>
+				<code>
+				cc rasm_v096.c -O2 -lm -lrt -march=native<br>
+				mv a.out rasm<br>
+				strip rasm
+				</code>
+			</div>
+			<div id="CompilationWindows"><div class="titre2">Windows compilation</div>
+				<code>
+				cl.exe rasm_v096.c -O2
+				</code>
+			</div>
+                        <div id="CompilationDOS"><div class="titre2">Compilation DOS or Windows 32 bits with Watcom</div>
+                                <code>
+                                # do not use -s or -ox option, this will cause a fatal stack issue
+                                wcl386.exe rasm_v096.c -6r -6s -fp6 -d0 -k4000000 -obmiler
+                                </code>
+                        </div>
+			<div id="CompilationMorphos"><div class="titre2">MorphOS compilation</div>
+				<code>
+				ppc-morphos-gcc-5 -O2 -c -o rasm rasm_v096.c<br>
+				strip rasm
+				</code>
+			</div>
+		</div>
+		<div id="Comportement"><div class="titre1">Rasm behaviour</div>
+			The goal of Rasm is to be easy to use. He will make default filenames, autoselect a cartridge or snapshot file when dedicated ROM directives are used.<br><br>
+
+			Rasm allow any <a href="#ORG">ORG</a> in the same memory space but it will trigger an error if two <a href="#ORG">ORG</a> zones overlap. For each new <a href="#ORG">ORG</a>, Rasm will do the check.<br><br>
+
+			If you need to assemble two programs in the same adressing range you may use the second parameter of <a href="#ORG">ORG</a> to relocate the code elsewhere or create a new memory space with directive <a href="#BANK">BANK</a><br><br>
+
+			Rasm has many error messages to help fixing wrong syntax.<br><br>
+
+			Rasm pre-processor remove useless spaces and comments. A first check is perform on valid characters and quotes. Some Maxam operators are translated to their C equivalent.<br><br>
+
+			When using relative file reference, the root directory to the relative path is that of the current file.<br><br>
+		</div>
+		<div id="Commandline"><div class="titre1">Command line</div>
+			Usage: rasm.exe &lt;file to assemble&gt; [options]<br><br>
+
+			Example: <code>rasm.exe myfile.asm</code>
+			<div id="FileOpt"><div class="titre2">Filenames options</div>
+			<table class="invisibletable">
+				<tr>
+					<td>-o &lt;file radix&gt;</td>
+					<td>set a common name for each output file, disregarding his type (.bin, .cpr, .sym). The default value is “rasmoutput”</td>
+				</tr>
+				<tr>
+					<td colspan=2">
+						Example:<br>
+						<code>
+							rasm.exe test -o grouik -s<br>
+							Pre-processing [test.asm]<br>
+							Assembling<br>
+							Write binary file <b>grouik</b>.bin (25 bytes)<br>
+							Write symbol file <b>grouik</b>.sym (10 bytes)<br>
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>-ob &lt;binary filename&gt;</td>
+					<td>set the full filename for automatic binary output.</td>
+				</tr>
+				<tr>
+					<td>-oc &lt;cartridge filename&gt;</td>
+					<td>set the full filename for cartridge output.</td>
+				</tr>
+				<tr>
+					<td>-oi &lt;snapshot filename&gt;</td>
+					<td>set the full filename for snapshot output.</td>
+				</tr>
+				<tr>
+					<td>-os &lt;symbol filename&gt;</td>
+					<td>set the full filename for symbol output.</td>
+				</tr>
+				<tr>
+					<td>-ok &lt;breakpoint filename&gt;</td>
+					<td>set the full filename for breakpoint export.</td>
+				</tr>
+				<tr>
+					<td>-I&lt;include directory&gt;</td>
+					<td>set the include directory. Multiple -I options is possible.</td>
+				</tr>
+				<tr>
+					<td>-no</td>
+					<td>disable file output.</td>
+				</tr>
+			</table>
+			</div>
+			<div id="ExportOpt"><div class="titre2">EDSK file option</div>
+			<table class="invisibletable">
+				<tr>
+					<td>-eo</td>
+					<td> &nbsp; </td> <!-- coz only ony line for the table... -->
+					<td>overwrite file in the EDSK if it exists.</td>
+				</tr>
+			</table>
+			</div>
+			<div id="ExportSna"><div class="titre2">Snapshot file option</div>
+			<table class="invisibletable">
+                                <tr>
+                                        <td>-v2</td>
+                                        <td>Export a snapshot version 2 (default is version 3)
+                                </tr>
+                                <tr>
+                                        <td>-sb</td>
+                                        <td>Export breakpoints in snapshot file (Winape and ACE emulator format), only with snapshot version 3+</td>
+                                </tr>
+                                <tr>
+                                        <td>-ss</td>
+                                        <td>Export symbols in snapshot file (Winape and ACE emulator format), only with snapshot version 3+</td>
+                                </tr>
+
+			</table>
+			</div>
+			<div id="SymbOpt"><div class="titre2">Symbol options</div>
+			<table class="invisibletable">
+				<tr>
+					<td>-s</td>
+					<td>export symbols in Rasm format</td>
+				</tr>
+				<tr>
+					<td colspan=2">
+						Example of outputed file:<br>
+						<code>
+							LABEL1 #0 B0<br>
+							LABEL2 #1 B0<br>
+							LABEL3 #2 B0<br>
+							LABEL4 #4 B0<br>
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>-sp</td>
+					<td>export symbols in Pasmo format</td>
+				</tr>
+				<tr>
+					<td colspan=2">
+						Example of outputed file:<br>
+						<code>
+							LABEL1 EQU 00000H<br>
+							LABEL2 EQU 00001H<br>
+							LABEL3 EQU 00002H<br>
+							LABEL4 EQU 00004H<br>
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>-sw</td>
+					<td>export symbols in Winape format</td>
+				</tr>
+				<tr>
+					<td colspan=2">
+						Example of outputed file:<br>
+						<code>
+							LABEL1 #0<br>
+							LABEL2 #1<br>
+							LABEL3 #2<br>
+							LABEL4 #4<br>
+						</code>
+					</td>
+				</tr>
+				<tr>
+					<td>-sl</td>
+					<td>additionnal option to export also local labels.</td>
+				</tr>
+				<tr>
+					<td>-sv</td>
+					<td>additionnal option to export also variables.</td>
+				</tr>
+				<tr>
+					<td>-sq</td>
+					<td>additionnal option to export also <a href="#EQU">EQU</a> aliases.</td>
+				</tr>
+				<tr>
+					<td>-sa</td>
+					<td>meta option meaning -sl -sv -sq</td>
+				</tr>
+				<tr>
+					<td>-ss</td>
+					<td>export symbols in snapshot</td>
+				</tr>
+				<tr>
+					<td>-eb</td>
+					<td>export breakpoints</td>
+				</tr>
+				<tr>
+					<td>-l &lt;label file&gt;</td>
+					<td>import symbols in Rasm, Pasmo or Winape format</td>
+				</tr>
+				<tr>
+					<td colspan=2">
+						Note: You may import as many symbol file as you want using multiple times -l option<br>
+						<code>
+							rasm.exe test -l import1.sym -l import2.sym -l import3.sym<br>
+						</code>
+					</td>
+				</tr>
+			</table>
+
+	Note 1: Arnold emulator is Rasm and Pasmo compliant for labels.<br>
+	Note 2: Winape emulator cannot handle long labels.<br>
+			</div>
+			<div id="Depend"><div class="titre2">Dependencies options</div>
+				-depend=make<br>
+Export all dependencies in a single line (for makefile usage)<br><br>
+				-depend=list<br>
+Export all dependencies, one per line (for other usage)<br><br>
+				If there is a binary output filename set (-ob option), it will be outputed in first position.
+			</div>
+			<div id="CompOpt"><div class="titre2">Compatibility options</div>
+			<table class="invisibletable">
+				<tr>
+					<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td> <!-- html hack for -ass on a single line -->
+					<td>&nbsp;</td>
+					<td>&nbsp;</td>
+				</tr>
+				<tr>
+					<td>-m</td>
+					<td>Maxam&nbsp;compatibility</td>
+					<td><ul>
+						<li>16 bits unsigned integer calculations with wrong rounding</li>
+						<li>comparisons using single = sign</li>
+						<li>simplified operator priorities (see charts)</li>
+					</ul></td>
+				</tr>
+				<tr>
+					<td>-ass</td>
+					<td>AS80&nbsp;compatibility</td>
+					<td><ul>
+						<li>32 bits integer calculations with wrong rounding</li>
+						<li>DEFB,DEFW,DEFI or DEFR directives with more than one parameter use first outputed byte as reference adress. Not the current outputed byte. That's why AS80 does not generate the same thing when using two DEFB instead of one with two parameters when using $ reference in it.</li>
+						<li>macro parameters are not protected by {}</li>
+						<li>MACRO directive must be used after the name of the macro</li>
+					</ul></td>
+				</tr>
+                                <tr>
+                                        <td>-uz</td>
+                                        <td>UZ80&nbsp;compatibility</td>
+                                        <td><ul>
+						<li>32 bits integer calculations with wrong rounding</li>
+						<li>macro parameters are not protected by {}</li>
+						<li>MACRO directive must be used after the name of the macro</li>
+                                        </ul></td>
+                                </tr>
+			</table>
+			</div>
+			<div id="DevOpt"><div class="titre2">Dev options</div>
+			<table class="invisibletable">
+				<tr>
+					<td>-v</td>
+					<td>verbose mode, display stats</td>
+				</tr>
+				<tr>
+					<td>-d</td>
+					<td>verbose detailed pre-processing</td>
+				</tr>
+				<tr>
+					<td>-a</td>
+					<td>verbose detailed assembling</td>
+				</tr>
+				<tr>
+					<td>-n</td>
+					<td>display third parties licences</td>
+				</tr>
+			</table>
+			</div>
+		</div>
+		<div id="Syntax"><div class="titre1">Source code format</div>
+			<div id="GeneraliteFormat"><div class="titre2">Generalities</div>
+				Assembler is not COBOL, it's useless to use identation with Rasm, except to be pretty. A &quot;:&quot; separator is not required between labels and instructions. As a direct consequence you cannot use a reserved word (directive, register, Z80 instruction) as a label.<br><br>
+
+				As you may declare two labels without separator, i encourage you to use the optionnal &quot;(void)&quot; parameter with macros declared without parameter (see <a href="#Macro">macro</a> chapter)<br><br>
+
+				Windows and Unix files are both supported.<br><br>
+
+				Rasm is not case sensitive. Don't be surprise to see your code in upper case in error messages.<br><br>
+
+                                A label is NOT an alias, and NOT a variable. Rasm knows the difference!<br><br>
+
+				- a label refer to a memory adress (an adress and sometimes a memory page if the workspace is in cartridge/snapshot space)<br>
+				- an alias (EQU) is a text, which encountered, is replaced by another one. Known variables are translated during first declaration<br>
+				- a variable is global to the whole source, his value must be initialised and may be modified anytime<br>
+			</div>
+			<div id="CommentaireFormat"><div class="titre2">Comments</div>
+			Rasm uses the semicolon to start a comment. Every appending chars will be ignored until carriage return.<br><br>
+
+			Note: There is no multi-lines comments.
+			</div>
+			<div id="LiteraleFormat"><div class="titre2">Literal values</div>
+				Rasm accepts the following values:<br>
+				<ul>
+					<li>Decimal if the value begins with a digit.</li>
+					<li>Binary if the value begins with %, 0b or ends with b.</li>
+					<li>Octal if the value begins with @.</li>
+					<li>Hexadecimal if the value begins with #, $, 0x or ends with h.</li>
+					<li>ASCII value with a single char between quotes.</li>
+					<li>Value of a label or a variable if it begins with a letter or @ followed by a letter.</li>
+					<li>$ symbol used alone means <i>current instruction adress</i>. When using DEFB, DEFW, DEFI, DEFR ou DEFS, the current adress is that of the current instruction. DEF* directives will output the very same data if you use multiple DEF or one DEF with multiple arguments.</li>
+				</ul>
+
+				All Rasm calculations are done with double precision floating point accumulator. A correct rounding is done in the end for integer needs.<br><br>
+
+				Beware of the <b>&amp;</b> char, reserved for AND operator.
+			</div>
+			<div id="CaractereFormat"><div class="titre2">Allowed chars</div>
+			Between quotes, all characters are allowed, at your own risks for special conversions. Outside quotes, you can use letters, digits, the dot, arobas, parenthesis, dollar, operators, pipe, power, percent, sharp, paragraphs, chevrons and also both quotes types.<br><br>
+                        Quoted strings may contains escaped chars:<br>
+                        <li>\t</li><br>
+                        <li>\n</li><br>
+                        <li>\r</li><br>
+                        <li>\f</li><br>
+                        <li>\v</li><br>
+                        <li>\b</li><br>
+                        <li>\0</li> -&gt; except with PRINT directive<br>
+
+			</div>
+			<div id="FichierFormat"><div class="titre2">Files</div>
+				RASM is using UNIX model for file management. Windows path are converted on the fly. If you use only relative paths and filenames Windows can handle, you may use your sources with Rasm either with Linux or Windows without modification.<br><br>
+
+				Relative path rule is simple: Every relative path take root of the file where it was read.
+			</div>
+			<div id="LabelFormat"><div class="titre2">Labels</div>
+				Inside a loop (REPEAT/WHILE/UNTIL) or inside a macro, you may use local labels the same way as Winape assembler does, prefixing labels with '@'.<br><br>
+
+				You may use a label value with a directive (ORG for example) only if the label declaration is before the directive.<br><br>
+
+				Every label beginning with BRK or @BRK will generate a <a href="#BREAKPOINT">BREAKPOINT</a>.<br><br>
+				
+				In DAMS mode, you may prefix labels with a dot but the call to this label will be done without the dot. DAMS mode will disable proximity labels.<br><br>
+			</div>
+			<div id="LocalLabelFormat"><div class="titre2">Local labels</div>
+				Local labels must be declared inside a loop or a repeat. Those labels are invisibles out of the loop scope.<br><br>
+
+				Local labels are declared with prefix '@'.<br><br>
+
+				Usage of local label in a loop:<br>
+				<code>
+					repeat 16<br>
+					add hl,bc<br>
+					jr nc,@no_overflow<br>
+					dec hl<br>
+					@no_overflow<br>
+					rend<br>
+				</code>
+			</div>
+			<div id="ExpLocalLabelFormat"><div class="titre2">Proximity label</div>
+				Proximity labels may be used anywhere. The prefix is the dot '.'<br><br>
+
+				Proximity label sample code:<br>
+				<code>
+					routine1<br>
+					add hl,bc<br>
+					jr nc,.no_overflow<br>
+					dec hl<br>
+					.no_overflow<br>
+					<br>
+					routine2<br>
+					add hl,bc<br>
+					jr nc,.no_overflow<br>
+					dec hl<br>
+					.no_overflow<br>
+					<br>
+					routine3<br>
+					xor a<br>
+					ld hl,routine1.no_overflow ; retrieve proximity label of routine1<br>
+					ld de,routine2.no_overflow ; of routine2<br>
+					sbc hl,de<br>
+				</code>
+			</div>
+			<div id="LabelTagFormat"><div class="titre2">Specifics tags for labels or structures</div>
+				<div id="TagBANK" class="titre3">{BANK}</div>
+				Using {BANK} prefix before a label (example: {BANK}mylabel ) get the <a href="#BANK">BANK</a> number where is located the label, instead of his absolute adress.<br><br>
+
+				Example:<br>
+				<code>
+					Bank 0<br>
+					ld a,{bank}mysub ; will be assembled LD A,1<br>
+					call connect_bank<br>
+					jp mysub<br>
+					bank 1<br>
+					defb 'coucou'<br>
+					mysub<br>
+					jr $<br>
+				</code>
+
+				<div id="TagPAGE" class="titre3">{PAGE}</div>
+				Using {PAGE} prefix before a label (example: {PAGE}mylabel ) get a Gate array style of the <a href="#BANK">BANK</a> number where is located the label, instead of the label adress.<br><br>
+				If you are using <a href="#BANKSET">BANKSET</a> directive to select 4 banks in a 64K set, then the gate array value is composed of the set number and the 2 most significant bits of the label adress.<br><br>
+
+				Example:<br>
+				<code>
+					Bank 0<br>
+					ld a,{page}mysub ; will be assembled LD A,#C5<br>
+					ld b,#7F<br>
+					out (c),a<br>
+					jp mysub<br>
+					bank 5<br>
+					defb 'coucou'<br>
+					mysub<br>
+					jr $<br>
+				</code>
+				<div id="TagPAGESET" class="titre3">{PAGESET}</div>
+				Using {PAGESET} prefix before a label (example: {PAGESET}mylabel ) get a Gate array style of the <a href="#BANKSET">BANKSET</a> number where is located the label, instead of the label adress.<br><br>
+
+				Example:<br>
+				<code>
+					bank 0<br>
+					ld a,{pageset}mysub ; will be assembled LD A,#C2<br>
+					ld b,#7F<br>
+					out (c),a ; as all the RAM is switching the code is supposed to be in ROM, or in a proper place<br>
+					jp mysub<br>
+					bank 5<br>
+					defb 'coucou'<br>
+					mysub<br>
+					jr $<br>
+				</code>
+				<div id="TagSIZEOF" class="titre3">{SIZEOF}</div>
+				Using {SIZEOF} prefix before a <a href="#Structures">structure</a> name get the size of it.<br><br>
+
+				See structure chapter <a href="#STRUCT">here</a>.
+			</div>
+			<div id="Coloration"><div class="titre2">Syntax color with VIM</div>
+				<ul>
+					<li>If you already own a syntax color file, just add the following lines to the file <code>.vim/syntax/z80.vim</code><br></li>
+					<li>Or you may download the whole file <a href="z80.vim">here</a></li>
+				</ul>
+				<br>
+				<code>
+					&quot; rasm/winape directives<br>
+					syn keyword z80PreProc charset bank write save include incbin incl48 incl49<br>
+					syn keyword z80PreProc macro mend switch case break while wend repeat until<br>
+					syn keyword z80PreProc buildcpr amsdos lz48 lz49 lzclose protect<br>
+					syn keyword z80PreProc direct brk let print stop nolist str<br>
+					syn keyword z80PreProc defr dr defi bankset page pageset sizeof endm struct endstruct ends<br>
+					syn keyword z80PreProc incexo lzexo lzx7 inczx7 buildsna setcrtc setcpc assert print<br>
+					syn keyword z80Reg lix liy hix hiy<br>
+				</code>
+
+			</div>
+		</div>
+		<div id="Expressions"><div class="titre1">Expressions</div>
+			<div id="Operateurs"><div class="titre2">Calculation operators</div>
+			Rasm is using a simplified calculation engine with multiple priorities (like C language). Here is the list of supported operations:<br>
+			<ul>
+				<li>* multiply</li>
+				<li>/ divide</li>
+				<li>+ addition</li>
+				<li>- soustraction</li>
+				<li>&amp; or AND for logical and</li>
+				<li>| or OR for logical or</li>
+				<li>^ or XOR for logical xor</li>
+				<li>% or MOD for modulo</li>
+				<li>&amp;&amp; for boolean and</li>
+				<li>|| for boolean or</li>
+				<li>&lt;&lt;  multiply by a power of two</li>
+				<li>&gt;&gt; divide by a power of two</li>
+				<li>hi() get upper 8 bits of a word</li>
+				<li>lo() get lower 8 bits of a word</li>
+				<li>sin() sinus</li>
+				<li>cos() cosinus</li>
+				<li>asin() d'arc-sinus</li>
+				<li>acos() d'arc-cosinus</li>
+				<li>atan() d'arc-tangente</li>
+				<li>int() float to integer conversion</li>
+				<li>floor() convert a float to the closest lower integer value</li>
+				<li>abs() absolute value</li>
+				<li>ln() logarithme népérien</li>
+				<li>log10() logarithme base 10</li>
+				<li>exp() exponentielle</li>
+				<li>sqrt() square root</li>
+				<li>== égalité (ou un seul = en mode Maxam)</li>
+				<li>!= ou &lt;&gt; différent de</li>
+				<li>&lt;= less or equal</li>
+				<li>&gt;= greater or equal</li>
+				<li>&lt; lower</li>
+				<li>&gt; greater</li>
+			</ul>
+			</div>
+			<div id="Priorites"><div class="titre2">Operators priorities</div>
+			<table border="1" class="visibletable">
+				<tr>
+					<th colspan="3">Lower is the prevalence, higher is the execution priority.</th>
+				</tr>
+				<tr>
+					<td>Operators</td>
+					<td>Rasm Prevalence</td>
+					<td>Maxam Prevalence</td>
+				</tr>
+				<tr>
+					<td>( &nbsp; )</td>
+					<td>0</td>
+					<td>0</td>
+				</tr>
+				<tr>
+					<td>! &nbsp;</td>
+					<td>1</td>
+					<td>464</td>
+				</tr>
+				<tr>
+					<td>* &nbsp; / &nbsp; %</td>
+					<td>2</td>
+					<td>464</td>
+				</tr>
+				<tr>
+					<td>+ &nbsp; -</td>
+					<td>3</td>
+					<td>464</td>
+				</tr>
+				<tr>
+					<td>&lt;&lt; &nbsp; &gt;&gt;</td>
+					<td>4</td>
+					<td>464</td>
+				</tr>
+				<tr>
+					<td>&lt; &nbsp; &lt;= &nbsp; == &nbsp; =&gt; &nbsp; &gt; &nbsp; !=</td>
+					<td>5</td>
+					<td>664</td>
+				</tr>
+				<tr>
+					<td>&amp; &nbsp; AND</td>
+					<td>6</td>
+					<td>464</td>
+				</tr>
+				<tr>
+					<td>| &nbsp; OR</td>
+					<td>7</td>
+					<td>464</td>
+				</tr>
+				<tr>
+					<td>^ &nbsp; XOR</td>
+					<td>8</td>
+					<td>464</td>
+				</tr>
+				<tr>
+					<td>&amp;&amp;</td>
+					<td>9</td>
+					<td>6128</td>
+				</tr>
+				<tr>
+					<td>||</td>
+					<td>10</td>
+					<td>6128</td>
+				</tr>
+			</table>
+			</div>
+		</div>
+
+		<div id="Variables"><div class="titre1">Variables</div>
+			<div id="Statiques"><div class="titre2">Static variables or alias</div>
+			You may create an unlimited number of alias with directive <a href="#EQU">EQU</a>. Alias cannot be modified (use variables if you need to).
+			</div>
+			<div id="Dynamiques"><div class="titre2">Dynamic variables</div>
+			Rasm is able to handle an unlimited number of variables.<br><br>
+
+			Syntax:<br>
+			<code>
+			myvar=5<br>
+			LET myvar=5 ; Winape compatible
+			</code>
+
+			Variables are used for numeric values only.<br><br>
+
+			Examples:<br>
+			<code>
+			dep=0<br>
+			repeat 16<br>
+			ld (ix+dep),a<br>
+			dep=dep+8<br>
+			rend<br>
+
+			ang=0<br>
+			repeat 256<br>
+			defb 127*sin(ang)<br>
+			ang=ang+360/256<br>
+			rend<br>
+			</code>
+			</div>
+		</div>
+		<!-- ****************************************** -->
+		<!--        D I R E C T I V E S                 -->
+		<!-- ****************************************** -->
+			A directive is not a functiob. That is a keyword which must be (séparé) with at least one space char.<br><br>
+			
+			Correct syntax: ASSERT (4*myvar)<br>
+			Wrong syntax: ASSERT(4*myvar)<br>
+			
+		<div id="DirectivesM"><div class="titre1">Directives mémoires</div>
+			<div id="ALIGN"><div class="titre2">ALIGN &lt;boundary&gt;[,fill]</div>
+				If you want to enforce that the current code adress is aligned to a value. Si l'adresse d'écriture du code en cours n'est pas un multiple de la valeur d'alignement, on augmente cette dernière afin que ça soit le cas. Cette instruction ne produit pas d'octet sur la sortie. Cependant, si un ALIGN est réalisé entre deux portions de code, ce sont des zéros qui seront en mémoire car les espaces de travail sont initialisés avec la valeur zéro.<br><br>
+				Exemple:<br>
+				<code>
+					ALIGN 2 ; align code on even adress<br>
+					ALIGN 256 ; align code on high byte<br>
+				</code>
+			</div>
+			<div id="BANK"><div class="titre2">BANK [ROM page number, RAM page number]</div>
+				Select a ROM number (cartridge) or a RAM slot (snapshot). When using BANK, cartridge is selected if there is no previous <a href="#BUILDSNA">BUILDSNA</a> directive.<br><br>
+
+				Values range from 0 to 31. In snapshot mode the values range from 0 to 35 (64K base memory + 512K extended memory).<br><br>
+
+				Used without parameter, the BANK directive open a new memory workspace.
+			</div>
+			<div id="BANKSET"><div class="titre2">BANKSET &lt;64K bloc number&gt;</div>
+				BANKSET directive select a set of 4 pages in a row. With snapshot v3, there is 9 memory sets, indexed from 0 to 8.<br><br>
+
+				You may use BANK and BANKSET in a source but you cannot select the same memory space. A check will trigger an error if you try to.<br><br>
+
+				Using this directive enables snapshot output (like BUILDSNA does).
+			</div>
+			<div id="LIMIT"><div class="titre2">LIMIT &lt;adress boundary&gt;</div>
+				Enforce a lower limit when assembling. Default limit is 65536 but you may need to change this value.<br><br>
+
+				If you want to protect a zone, take a look at the directive <a href="#PROTECT">PROTECT</a>.
+			</div>
+			<div id="ORG"><div class="titre2">ORG &lt;logical adress&gt;[,physical adress]</div>
+				Change assembling adress. You may write the code to another adress than the logical adress with the second parameter.<br><br>
+				
+				Assembling to an absolute adress:<br>
+				<code>
+				ORG #8000<br>
+				defw $<br>
+				; bytecode output<br>
+				#8000: #00,#80<br>
+				</code>
+
+				<br>
+				Assembling to another adress than where the code will be written:<br>
+				<code>
+				ORG #8000,#1000<br>
+				defw $<br>
+				; bytecode output<br>
+				#1000: #00,#80<br>
+				</code>
+
+				<br>
+				Get back physical adress after changing logical adress:<br>
+				<code>
+				ORG #8000,#1000<br>
+				defw $      ; This instruction is logically in #8000 but will be written in #1000<br>
+				ORG $       ; ORG do not care of logical adress, we are in #1002 after the previous DEFW<br>
+				defw $      ; current adress is #1002<br>
+				; bytecode output<br>
+				#1000: #00,#80,#02,#10<br>
+				</code>
+				
+			</div>
+			<div id="PROTECT"><div class="titre2">PROTECT &lt;starting adress&gt;,&lt;ending adress&gt;</div>
+				Protect the memory zone from writes.
+			</div>
+			<div id="WRITE"><div class="titre2">WRITE DIRECT &lt;lower rom&gt;[,&lt;higher rom&gt;[,&lt;RAM gate array&gt;]]</div>
+				The purpose of this directive is the Winape compatibility. Prefer usage of <a href="#BANK">BANK</a> or <a href="#BANKSET">BANKSET</a> directives.<br><br>
+
+				Using lower ROM (from 0 et 7) or higher ROM (from 0 et 31) is like <a href="#BANK">BANK</a> usage.<br><br>
+
+				Using only RAM gate array (disabling ROM with -1 like Winape does) a new memory workspace is created, like using <a href="#BANK">BANK</a> directive without parameter.
+			</div>
+		</div>
+		
+		<div id="DirectivesD"><div class="titre1">Data declaration directives</div>
+			<div id="CHARSET"><div class="titre2">CHARSET 'string',&lt;value&gt; | &lt;code&gt;,&lt;value&gt; | &lt;start&gt;,&lt;end&gt;,&lt;value&gt;</div>
+				The directive allow quoted char values to be changed. There is 4 usages for this directive:<br>
+				<ul>
+					<li>'string',&lt;value&gt; &rarr; First char of the string will get the value &lt;value&gt;. Then the next char &lt;value&gt;+1 and so on until the end of the string.</li>
+					<li>&lt;code&gt;,&lt;value&gt; &rarr; Set to the ASCII char &lt;code&gt; the value &lt;value&gt;.</li>
+					<li>&lt;start&gt;,&lt;end&gt;,&lt;value&gt; &rarr; Set to the ASCII char from &lt;start&gt; to &lt;end&gt; an incremental value starting from &lt;value&gt;.</li>
+					<li>Without parameter &rarr; Reset all ASCII char to default.</li>
+				</ul>
+				This directive is Winape compatible.<br><br>
+				
+				<br>
+				Redefine char:<br>
+				<code>
+				CHARSET 'T','t' ; 'T' chars will be outputed as 't'<br>
+				defb 'tT'<br>
+				; bytecode output<br>
+				#0000: #74 #74<br>
+				</code>
+				
+				<br>
+				Redefine non consecutives chars:<br>
+				<code>
+				CHARSET 'turndiskheo ',0<br>
+				defb 'there is no turndisk'<br>
+				; bytecode output<br>
+				#0000: #00,#08,#09,#02,#0B,#05,#06,#0B,#03,#0A,#0B,#00,#01,#02,#03,#04,#05,#06,#07<br>
+				</code>
+
+				<br>
+				Redefine consecutives chars:<br>
+				<code>
+				CHARSET 'A','Z','a' ; Change all uppercases to their respective lowercases<br>
+				defb 'abcdeABCDE'<br>
+				; bytecode output<br>
+				#0000: #61,#62,#63,#64,#65,#61,#62,#63,#64,#65<br>
+				</code>
+			</div>
+			<div id="DEFB"><div class="titre2">DB, DEFB, DM, DEFM &lt;value&gt;[,&lt;value&gt;,...]</div>
+			This directive handle one or more parameters and output bytes regarding of thoses parameters. The value may be a literal value, a formula (the result will be rounded), or a string where each char will output a byte. If CHARSET directive were used, the outputed bytes respect the CHARSET redefinition.<br><br>
+
+			Example:<br>
+			<code>
+			defb 'r'-'a'+'A',oudoudou',#FF,lo($)<br>
+			</code>
+			The current adress ($) is the one from outputed byte (this is not the case in AS80 mode, see compatibility options).
+			</div>
+			<div id="DEFW"><div class="titre2">DEFW, DW &lt;value&gt;[,&lt;value&gt;,...]</div>
+			This directive handle one or more parameters and output words (two bytes) regarding thoses parameters. Values may be literal value, formula, single char but not a string!<br><br>
+
+			Example:<br>
+			<code>
+			defw mylabel1,mylabel2,'a'+#100<br><br>
+			</code>
+			</div>
+
+			<div id="DEFI"><div class="titre2">DEFI &lt;value&gt;[,&lt;value&gt;,...]</div>
+			This directive handle one or more parameters and output integers (four bytes) regarding thoses parameters. Values may be literal value, formula, single char but not a string!<br><br>
+			</div>
+			<div id="DEFR"><div class="titre2">DEFR, DR &lt;real number&gt;[,&lt;real number&gt;,...]</div>
+				This directive handle one or more parameters and output AMSTRAD firmware compatible real numbers (5 bytes)<br><br>
+				Example:<br>
+				<code>
+					defr 5/12,7/3<br>
+				</code>
+			</div>
+			<div id="DEFS"><div class="titre2">DEFS, DS &lt;repetition&gt;[,&lt;value&gt;,[&lt;repetition&gt;,...]</div>
+				This directive outputs a byte and repeat &lt;repetition&gt; times. If the byte to output is not set, then the directive will output zeroes. If the repetition value is zero then no byte will be outputed. You may declare multiples repetition sequences with only one DEFS.<br><br>
+
+				Examples:<br>
+				<code>
+					defs 5,8,4,1 ; output=#08,#08,#08,#08,#08,#01,#01,#01,#01<br>
+					defs 5,8,4   ; output=#08,#08,#08,#08,#08,#00,#00,#00,#00<br>
+					defs 5       ; output=#00,#00,#00,#00,#00<br>
+				</code>
+			</div>
+			<div id="EQU"><div class="titre2">&lt;alias&gt; EQU &lt;replacement string&gt;</div>
+				Create an alias. When assembling, each alias will be replaced by the replacement string previously defined. There is an infinite recursivity check done for each alias declaration.<br><br>
+
+				Example:<br>
+				<code>
+					tab1 EQU #8000<br>
+					tab2 EQU tab1+#100<br>
+					<br>
+					ld hl,tab2<br>
+				</code>
+			</div>
+			<div id="STR"><div class="titre2">STR 'string1'[,'string2'...]</div>
+				Almost same directive as <a href="#DEFB">DEFB</a>, except the very last outputed char will have his 7th bit forced to 1.<br><br>
+
+				Both lines will output the same bytes:<br>
+				<code>
+					defb 'roudoudo','u'+128<br>
+					str 'roudoudou'<br>
+				</code>
+			</div>
+			<div id="STRUCT"><div class="titre2">STRUCT &lt;prototype name&gt;[,&lt;variable name&gt;]</div>
+				Z80 processor is able to manage structures thanks to his indexed instructions (with IX and IY registers). Structures may be used anywhere.<br><br>
+
+				Example of structure creation<br>
+				<code>
+					struct st1<br>
+					ch1 defw 0<br>
+					ch2 defb 0<br>
+					endstruct<br>
+					; structure st1 created with two fields ch1 and ch2. No byte outputed.<br>
+					; Imbricated structures<br>
+					struct metast1<br>
+					struct st1 pr1<br>
+					struct st1 pr2<br>
+					endstruct<br>
+					; structure metast1 created with 2 sub-structures st1 called pr1 et pr2<br>
+				</code>
+				<br>
+				Recommended usage to get a structure size is to use the prefix {SIZEOF}. Like Vasm, you can get the structure size using his prototype name but it is not a recommended usage.<br>
+				<code>
+					LD HL,{SIZEOF}metast1<br>
+					LD HL,metast1<br>
+				</code>
+				<br>
+				STRUCT directive called with 2 parameters will create a structure in memory, based on prototype. In the example below, it will create a metast1 structure type, called mymeta.<br><br>
+				<code>
+					struct metast1 mymeta<br>
+				</code>
+				<br>
+				Example of retrieving fields offsets using prototype name:<br>
+				<code>
+					LD A,(IX+metast1.pr2.ch1) ; offset because prototype used<br>
+				</code>
+				<br>
+				Example of retrieving fields absolute adress using declared structure name:<br>
+				<code>
+					LD HL,mymeta.pr2.ch1<br>
+					LD A,(HL)<br>
+				</code>
+			</div>
+		</div>
+		<div id="DirectivesI"><div class="titre1">Crunch and import directives</div>
+			<div id="INCLUDE"><div class="titre2">INCLUDE, READ 'file to read'</div>
+				Read a textfile in place of the directive. The root of the relative path is the location of the file containing the include directive. An absolute path discard the relative path.<br><br>
+
+				There is no recursivity limit, be aware of what you are doing.
+			</div>
+			<div id="INCBIN"><div class="titre2">INCBIN 'file to read'[,offset[,size[,extended offset[,OFF]]]]</div>
+				Read a binary file. Binary data will go straight to memory space. Additional parameters are Winape INCBIN compatibles. The first offset had no limitation (like Winape) so for a pure Rasm usage, do not bother with extended offset.<br><br>
+
+				You may use a negative offset, relative to the end of the file.<br><br>
+
+				You may use a negative size, relative to the fullsize of the file, minus the offset. A size of -10 will read all the file except 10 latest byets.<br><br>
+
+				A zero size will read all the file.<br><br>
+
+				'OFF' parameter: You may want to read binary data in order to initialise a memory space, then assemble code on it. The 'OFF' parameter will disable overwrite check for this file.<br><br>
+
+				Example:<br>
+				<code>
+					org #4000<br>
+					incbin'makeraw.bin',0,0,0,OFF ; read in #4000 without overwrite check<br>
+					org #4001<br>
+					defb #BB ; overwrite 2nd byte without error<br>
+				</code>
+			</div>
+			<div id="INCL48"><div class="titre2">INCL48, INCL49, INCLZ4, INCZX7, INCEXO 'file to read'</div>
+				Read a binary file, crunch it in LZ48, LZ49, LZ4, Exomizer or ZX7 on the fly.
+			</div>
+			<div id="LZ"><div class="titre2">LZ48, LZ49, LZ4, LZX7, LZEXO</div>
+				Open a crunched section in LZ48,LZ49, LZ4, ZX7 or Exomizer. Outputed code will be crunched after assembling. The code placed after the zone will be relocated (labels, ...).<br><br>
+
+				You cannot call a label located after a crunched zone from the crunched zone because we cannot know where it will be located after crunching. This will trigger an error.<br><br>
+
+				Limitations:<br>
+				<ul>
+					<li>Code or data of a crunched zone cannot exceed 64K.</li>
+					<li>You cannot imbricate crunched sections.</li>
+				</ul>
+				<br>
+				Example:<br>
+				<code>
+					org #1000<br>
+					ld hl,zecrunch<br>
+					ld de,#8000<br>
+					call decrunch<br>
+					call #8000<br>
+					jp next ; label next after crunched zone will be relocated<br>
+					<br>
+					zecrunch<br>
+					lz48 ; this section will be crunched<br>
+					org #8000,$<br>
+					nop<br>
+					nop<br>
+					nop<br>
+					ret<br>
+					lzclose<br>
+					<br>
+					next<br>
+					ret<br>
+				</code>
+
+			</div>
+			<div id="LZCLOSE"><div class="titre2">LZCLOSE</div>
+				Close an LZ section.
+			</div>
+		</div>
+
+		<div id="DirectivesC"><div class="titre1">Conditionnal code directives</div>
+			<div id="ASSERT"><div class="titre2">ASSERT &lt;condition&gt;[,text,text,text...]</div>
+				Check condition and stop assembling when result is false.<br><br>
+				Example:<br>
+				<code>
+					assert mygenend-mygenstart&lt;#100<br>
+					assert mygenend-mygenstart&lt;#100,'code is too big'<br>
+				</code>
+			</div>
+			<div id="IFTHEN"><div class="titre2">IF &lt;condition&gt;, IFNOT &lt;condition&gt;, ELSE, ELSEIF &lt;condition&gt;, ENDIF</div>
+				Directive in order to test and enable block of code.<br><br>
+
+				Example:<br>
+				<code>
+					CODE_PRODUCTION=1<br>
+					[...]<br>
+					if CODE_PRODUCTION<br>
+					or #80<br>
+					else<br>
+					print 'test version'<br>
+					endif<br>
+				</code>
+
+			</div>
+			<div id="IFDEF"><div class="titre2">IFDEF, IFNDEF &lt;variable or label&gt;</div>
+				Both directives test variable or label existence.
+			</div>
+			<div id="IFUSED"><div class="titre2">IFUSED, IFNUSED &lt;variable or label&gt;</div>
+				Both directives test variable or label usage, BEFORE the test.
+			</div>
+			<div id="MACRO"><div class="titre2">MACRO</div>
+				Rasm supports macro with curly brackets (Winape compatible). You may use conditionnal assembling with macros cause a macro is barely a copy/paste with args replacement.<br><br>
+
+				Example of a long distance indexing (except B or C register):<br>
+				<code>
+					macro LDIXREG register,dep<br>
+					if {dep}<-128 || {dep}>127<br>
+					push bc<br>
+					ld bc,{dep}<br>
+					add ix,bc<br>
+					ld (ix+0),{register}<br>
+					pop bc<br>
+					else<br>
+					ld (ix+{dep}),{register}<br>
+					endif<br>
+					mend<br>
+				</code>
+
+				Note: End of macro is directive MEND or ENDM<br><br><br>
+
+
+				<i>Macros without paramètre</i><br>
+				Beware that any misspeled macro call will be turn into label declaration! Recommanded usage is to use a fake (VOID) parameter each call. Then a misspeled macro with (VOID) parameter will trigger an error.<br><br>
+				<code>
+					macro withoutparam<br>
+					nop<br>
+					mend<br>
+					<br>
+					withoutparam (void) ; secured call of macro<br>
+				</code>
+
+				<br><br><i>Macro calls with static or dynamic args</i><br>
+				You can send args to macro, either as text replacement, or as formula that will be evaluated before replacement.<br><br>
+				<code>
+					macro test myarg<br>
+					defb {myarg}<br>
+					mend<br>
+					<br>
+					repeat 2<br>
+					test repeat_counter<br>
+					rend<br>
+					repeat 2<br>
+					test {eval}repeat_counter<br>
+					rend<br>
+				</code>
+
+				In the first loop, a 'defb repeat_counter' will be repeated.<br>
+				In the second loop, a 'defb 1' will be repeated as the counter is previously evaluated.<br>
+			</div>
+			<div id="PRINT"><div class="titre2">PRINT 'string',&lt;variable&gt;,&lt;expression&gt;</div>
+				Write some text, variables or expression during assembly. The default output for numerical values is a floating point value but you may use prefix to change display format.<br><br>
+				<div class="titre3">{hex}</div>Display as hexadecimal value. If the value is less than #FF then display will be forced to 2 digits. Less than #FFFF the display will be forced to 4 digits. There won't be extra zeros for upper values.
+
+				<div class="titre3">{hex2}, {hex4}, {hex8}</div>Force hex display to 2, 4 or 8 digits.
+
+				<div class="titre3">{bin}</div>Display a binary value. If the value is less than #FF display will be forced to 8 bits. Less than #FFFF the display will be forced to 16 bits. Any negative 32 bits value with all 16 upper bits to 1 will be displayed as 16 bits value. 
+
+				<div class="titre3">{bin8},{bin16},{bin32}</div>Force binary display to 8, 16 ou 32 bits.
+
+				<div class="titre3">{int}</div>Display value as integer.
+
+			</div>
+			<div id="FAIL"><div class="titre2">FAIL 'string',&lt;variable&gt;,&lt;expression&gt;</div>
+				Directive inherited from PRINT, but trigger an error and STOP assembling.
+			</div>
+			<div id="REPEAT"><div class="titre2">REPEAT &lt;repetition number&gt;, REND / REPEAT, UNTIL &lt;condition&gt;</div>
+				REPEAT directive makes a loop of a block of instructions. You may fix a number of repetition or use conditionnal mode with end block directive UNTIL. You may get the internal loop counter anytime with internal value REPEAT_COUNTER.<br><br>
+
+				Example:<br>
+				<code>
+					repeat 10<br>
+					ldi<br>
+					print repeat_counter<br>
+					rend<br>
+					<br>
+					cpt=10<br>
+					repeat<br>
+					ldi<br>
+					cpt=cpt-1<br>
+					until cpt&gt;0<br>
+				</code>
+                               Example with exported counter:<br>
+                                <code>
+                                        repeat 10,hello<br>
+                                        ldi<br>
+                                        print hello<br>
+                                        rend<br>
+                                        <br>
+                                </code>
+				Note: The 'hello' variable may exist or not. If not it will be created when starting the REPEAT loop.
+			</div>
+			<div id="STOP"><div class="titre2">STOP</div>
+				STOP assembly, there will be no outputed files.
+			</div>
+			<div id="SWITCH"><div class="titre2">SWITCH, CASE, BREAK, DEFAULT, ENDSWITCH</div>
+				SWITCH/CASE syntax mimics the C syntax. You may use multiple cases with the very same value. This allow you to write more complex cases.<br><br>
+
+				Below, the macro call with '5' will output all defb with 'oui' or 'encore oui':<br>
+				<code>
+					macro ouioui mavar<br>
+					switch {mavar}<br>
+					nop ; outside case, won't be outputed<br>
+					case 3<br>
+					defb 'non'<br>
+					case 5<br>
+					defb 'oui'<br>
+					case 7<br>
+					defb 'encore oui'<br>
+					break<br>
+					case 8<br>
+					defb 'non'<br>
+					case 5<br>
+					defb 'encore oui'<br>
+					break<br>
+					default<br>
+					defb 'non'<br>
+					endswitch<br>
+					mend<br>
+				</code>
+			</div>
+			<div id="WHILE"><div class="titre2">WHILE, WEND</div>
+				Repeat a block as long as the condition is checked and true. You may use anytime a WHILE_COUNTER variable to get the internal counter.<br><br>
+
+				Example:<br>
+				<code>
+					cpt=10<br>
+					while cpt&gt;0<br>
+					ldi<br>
+					cpt=cpt-1<br>
+					print 'cpt=',cpt,' while_counter=',while_counter<br>
+					wend<br>
+				</code>
+				Loop will run 10 times with the following output:<br>
+				<code>
+					Pre-processing [while.asm]<br>
+					Assembling<br>
+					cpt= 9.00  while_counter= 1.00<br>
+					cpt= 8.00  while_counter= 2.00<br>
+					cpt= 7.00  while_counter= 3.00<br>
+					cpt= 6.00  while_counter= 4.00<br>
+					cpt= 5.00  while_counter= 5.00<br>
+					cpt= 4.00  while_counter= 6.00<br>
+					cpt= 3.00  while_counter= 7.00<br>
+					cpt= 2.00  while_counter= 8.00<br>
+					cpt= 1.00  while_counter= 9.00<br>
+					cpt= 0.00  while_counter= 10.00<br>
+					Write binary file rasmoutput.bin (20 bytes)<br>
+				</code>
+			</div>
+		</div>
+
+		<div id="DirectivesF"><div class="titre1">Output file directives</div>
+			<div id="AMSDOS"><div class="titre2">AMSDOS</div>
+				This directive add an AMSDOS header to the automatic binary output file of Rasm. Header won't be add to binaries produced by SAVE directives (except if you explicitly set it).
+			</div>
+			<div id="BREAKPOINT"><div class="titre2">BREAKPOINT [&lt;adress&gt;]</div>
+				Add a breakpoint (this won't be assembled) to the current adress or to the adress of the parameter. Breakpoints may be exported to a raw file or in snapshots (Winape and ACE compatible).<br><br>
+
+				Note: Any label starting with BRK or @BRK will generate a breakpoint.<br><br>
+			</div>
+			<div id="BUILDCPR"><div class="titre2">BUILDCPR</div>
+				This deprecated directive was supposed to force cartridge output when using multiple kind of binaries.
+			</div>
+			<div id="BUILDSNA"><div class="titre2">BUILDSNA [V2]</div>
+				This directive force Rasm to output a snapshot instead of a cartridge when using BANK(s).<br><br>
+
+				The default settings of snapshot is a CPC 6128 with CRTC 0 but you may use <a href=#SETCRTC">SETCRTC</a> and <a href="#SETCPC">SETCPC</a> directives to change those settings.<br><br>
+
+				The snapshot will include a classic CPC screen (like AMSDOS basic) with all non blinking colors (like AMSDOS basic). Audio channels are disabled, ROMS are disabled and interrupt mode is 1.<br><br>
+				
+				Example:<br>
+				<code>
+					buildsna ; recommanded usage when using snapshot is to set it first<br>
+					<br>
+					bankset 0 ; assembling in first 64K<br>
+					org #1000<br>
+					run #1000 ; snapshot will run at #1000<br>
+					<br>
+					ld b,#7F<br>
+					ld a,{page}mydata ; get gate array value for paging memory<br>
+					out (c),c<br>
+					ld a,(mydata)<br>
+					jr $<br>
+					<br>
+					bank 6 ; choose 3th bank of 2nd 64K set<br>
+					nop<br>
+					mydata defb #DD<br>
+					<br>
+					bank ; without parameter, this is a temporary memory space<br>
+					; that won't be save in the snapshot<br>
+					<br>
+					pouet<br>
+					repeat 10<br>
+					cpi<br>
+					rend<br>
+					camion<br>
+					save"another",pouet,camion-pouet<br>
+				</code>
+				<br>
+				Compatibility option for snapshot version 2: Some emulators or hardware board do not support snapshot v3. Just add arg 'v2' to SNAPSHOT directive. (New limitations are 128K max):<br>
+				<code>
+					buildsna v2<br>
+				</code>
+			</div>
+			<div id="RUN"><div class="titre2">RUN &lt;adress&gt;[,&lt;gate array configuration&gt;}</div>
+				Select the memory location where to start a snapshot. Optional parameter to set the gate array configuration.
+			</div>
+			<div id="SAVE"><div class="titre2">SAVE 'filename',&lt;adress&gt;,&lt;size&gt;[,AMSDOS|DSK[,'dsk filename'[,&lt;side&gt;]]]</div>
+				Record a binary file from the <i>adress</i> until <i>adress+taille</i> of the current memory space. All SAVE directives are delayed until the end of assembling. If there is no error then files will be written. You cannot SAVE intermediate assembling state.<br><br>
+
+				When recording file on a floppy image (DSK), the filename will be forced to upper case and truncated if it does not respect AMSDOS limitations<br><br>
+
+				Examples:<br>
+				<code>
+					SAVE 'myfile.bin',start,size ; Save a raw binary file<br>
+					SAVE 'myfile.bin',start,size,AMSDOS ; Save a binary file with AMSDOS header<br>
+					SAVE 'myfile.bin',start,size,DSK,'fichierdsk.dsk' ; Save a binary file (AMDOS header mandatory) on a DSK file<br>
+				</code>
+
+
+			</div>
+			<div id="SETCPC"><div class="titre2">SETCPC &lt;model&gt;</div>
+				Select CPC model when recording snapshot v3:<br>
+				<ul>
+					<li>0 : CPC 464</li>
+					<li>1 : CPC 664</li>
+					<li>2 : CPC 6128</li>
+					<li>4 : 464 Plus</li>
+					<li>5 : 6128 Plus</li>
+					<li>6 : GX-4000</li>
+				</ul>
+			</div>
+			<div id="SETCRTC"><div class="titre2">SETCRTC &lt;CRTC model&gt;</div>
+				Select CRTC model when writing snapshot v3 file. Range value for CRTC model is from 0 to 4. CPC Plus and GX-4000 share CRTC 3.
+			</div>
+		</div>
+
+		<div id="DirectivesU"><div class="titre1">Compatibility directives</div>
+			<div id="LIST"><div class="titre2">LIST, NOLIST, LET</div>
+				Those directives are ignored. Usage for Maxam/Winape compatibility only.
+			</div>
+		</div>
+
+
+		<div id="Instructions"><div class="titre1">Instruction set</div>
+			Rasm support all documented and undocumented instructions, even complex instructions like <i>bitops+load.</i><br><br>
+
+			8 bits register storage of IX and IY is doing indifferently with  LX, IXL or XL, and so on.<br><br>
+
+			Complex instructions syntax:<br>
+			<code>
+				res 0,(ix+0),a<br>
+				bit 0,(ix+0),a<br>
+				sll 0,(ix+0),a<br>
+				rl  0,(ix+0),a<br>
+				rr  0,(ix+0),a<br>
+			</code>
+			<br>
+			Undocumented opcodes syntax:<br>
+			<code>
+				out (#12),a ; #12 is any 8 bits value<br>
+				in a,(#12)<br>
+				in 0,(c) ou in f,(c)<br>
+				sll &lt;register&gt; or sl1 &lt;register&gt;<br>
+			</code>
+			<br>
+			Multi-arg syntax available for PUSH, POP and NOP:<br>
+			- PUSH multi-args<br>
+			<code>
+				push bc,de,hl ; &rarr; push bc : push de : push hl<br>
+			</code>
+			- NOP repetition<br>
+			<code>
+				nop 4         ; &rarr; nop : nop : nop : nop<br>
+			</code>
+                       - complex LD<br>
+                        <code>
+                                LD BC,BC      ; &rarr; LD B,B : LD C,C<br>
+                                LD BC,DE      ; &rarr; LD B,D : LD C,E<br>
+                                LD BC,HL      ; &rarr; LD B,H : LD C,L<br>
+                                LD DE,BC      ; &rarr; LD D,B : LD E,C<br>
+                                LD DE,DE      ; &rarr; LD D,D : LD E,E<br>
+                                LD DE,HL      ; &rarr; LD D,H : LD E,L<br>
+                                LD HL,BC      ; &rarr; LD H,B : LD L,C<br>
+                                LD HL,DE      ; &rarr; LD H,D : LD L,E<br>
+                                LD HL,HL      ; &rarr; LD H,H : LD L,L<br>
+                                <br>
+                                LD HL,(IX+n) ; &rarr; LD H,(IX+n+1) : LD L,(IX+n)<br>
+                                LD HL,(IY+n) ; &rarr; LD H,(IY+n+1) : LD L,(IY+n)<br>
+                                LD DE,(IX+n) ; &rarr; LD D,(IX+n+1) : LD E,(IX+n)<br>
+                                LD DE,(IY+n) ; &rarr; LD D,(IY+n+1) : LD E,(IY+n)<br>
+                                LD BC,(IX+n) ; &rarr; LD B,(IX+n+1) : LD C,(IX+n)<br>
+                                LD BC,(IY+n) ; &rarr; LD B,(IY+n+1) : LD C,(IY+n)<br>
+                               <br>
+                                LD (IX+n),HL ; &rarr; LD (IX+n+1),H : LD (IX+n),L<br>
+                                LD (IY+n),HL ; &rarr; LD (IY+n+1),H : LD (IY+n),L<br>
+                                LD (IX+n),DE ; &rarr; LD (IX+n+1),D : LD (IX+n),E<br>
+                                LD (IY+n),DE ; &rarr; LD (IY+n+1),D : LD (IY+n),E<br>
+                                LD (IX+n),BC ; &rarr; LD (IX+n+1),B : LD (IX+n),C<br>
+                                LD (IY+n),BC ; &rarr; LD (IY+n+1),B : LD (IY+n),C<br>
+                        </code>
+		</div>
+
+		<div id="Limitations"><div class="titre1">Limitations</div>
+			<ul>
+				<li>You cannot use a Z80 instruction or register as label,alias or variable.</li>
+				<li>You cannot use the same name for alias, label or variable.</li>
+				<li>Rasm is not case sensitive.</li>
+				<li>Crunched sections cannot exceed 64K before compression.</li>
+			</ul>
+		</div>
+
+		<div id="licence">
+			Rasm is using licence <a href="https://fr.wikipedia.org/wiki/Licence_MIT" target=_top>MIT</a> &quot;expat&quot;<br><br>
+
+			&laquo; Copyright &copy; BERG&Eacute; &Eacute;douard (roudoudou)<br><br>
+
+			Permission  is  hereby  granted,  free  of charge, to any person obtaining a copy  of  this  software and  associated  documentation/source   files   of RASM, to deal in the Software without restriction, including without limitation the  rights  to  use, copy,   modify,   merge,   publish,    distribute, sublicense,  and/or  sell  copies of the Software, and  to  permit  persons  to  whom the Software is furnished  to  do  so,  subject  to  the following conditions:<br><br>
+
+			The above copyright  notice  and  this  permission notice   shall   be  included  in  all  copies  or substantial portions of the Software. The   Software   is   provided  &quot;as is&quot;,   without warranty   of   any   kind,  express  or  implied, including  but  not  limited  to the warranties of merchantability,   fitness   for   a    particular purpose  and  noninfringement.  In  no event shall the  authors  or  copyright  holders be liable for any  claim, damages  or other  liability,  whether in  an  action  of  contract, tort  or  otherwise, arising from,  out of  or in connection  with  the software  or  the  use  or  other  dealings in the Software. &raquo;
+		</div>
+		
+	</div>
+	</body>
+</html>

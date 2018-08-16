@@ -171,6 +171,33 @@ int CSVGetFieldArrayNumber(char **myfield)
 	return n;
 
 }
+/***
+ *      TxtSplit
+ *
+ *      split the parameter string into an array of strings
+ */
+char **TxtSplitWithChar(char *in_str, char split_char)
+{
+        #undef FUNC
+        #define FUNC "TxtSplitWithChar"
+
+        char **tab=NULL;
+        char *match_str;
+        int redo=1;
+        int idx,idmax;
+
+        match_str=in_str;
+
+        while (redo && *in_str) {
+                while (*match_str && *match_str!=split_char) match_str++;
+                redo=*match_str;
+                *match_str=0;
+                FieldArrayAddDynamicValueConcat(&tab,&idx,&idmax,in_str);
+                in_str=++match_str;
+        }
+
+        return tab;
+}
 
 /***
 	Add a value to a list of strings
@@ -956,75 +983,6 @@ long long FileGetSize(char *filename)
 	//logdebug("size of %s = %d (%dkb)",filename,nn,nn/1024);
 	return nn;
 }
-
-/*
- * optimised reading of text file in one shot
- */
-unsigned char *_internal_readbinaryfile(char *filename, int *filelength)
-{
-	#undef FUNC
-	#define FUNC "_internal_readbinaryfile"
-
-	unsigned char *binary_data=NULL;
-	
-	*filelength=FileGetSize(filename);
-	binary_data=MemMalloc((*filelength)+1);
-	/* we try to read one byte more to close the file just after the read func */
-	if (FileReadBinary(filename,(char*)binary_data,(*filelength)+1)!=*filelength) {
-		logerr("Cannot fully read %s",filename);
-		exit(INTERNAL_ERROR);
-	}
-	return binary_data;
-}
-char **_internal_readtextfile(char *filename)
-{
-	#undef FUNC
-	#define FUNC "_internal_readtextfile"
-
-	char **lines_buffer=NULL;
-	unsigned char *bigbuffer;
-	int nb_lines=0,max_lines=0,i=0,e=0;
-	int file_size;
-
-	bigbuffer=_internal_readbinaryfile(filename,&file_size);
-
-	while (i<file_size) {
-		while (e<file_size && bigbuffer[e]!=0x0A) {
-			/* Windows de meeeeeeeerrrdde... */
-			if (bigbuffer[e]==0x0D) bigbuffer[e]=':';
-			e++;
-		}
-		if (e<file_size) e++;
-		if (nb_lines>=max_lines) {
-			max_lines=max_lines*2+10;
-			lines_buffer=MemRealloc(lines_buffer,(max_lines+1)*sizeof(char **));
-		}
-		lines_buffer[nb_lines]=MemMalloc(e-i+1);
-		memcpy(lines_buffer[nb_lines],bigbuffer+i,e-i);
-		lines_buffer[nb_lines][e-i]=0;
-		if (0)
-		{
-			int yy;
-			for (yy=0;lines_buffer[nb_lines][yy];yy++) {
-				if (lines_buffer[nb_lines][yy]>31) printf("%c",lines_buffer[nb_lines][yy]); else printf("(0x%X)",lines_buffer[nb_lines][yy]);
-			}
-			printf("\n");
-		}		
-		nb_lines++;
-		i=e;
-	}
-	if (!max_lines) {
-		lines_buffer=MemMalloc(sizeof(char**));
-		lines_buffer[0]=NULL;
-	} else {
-		lines_buffer[nb_lines]=NULL;
-	}
-	MemFree(bigbuffer);
-	return lines_buffer;
-}
-
-#define FileReadLines(filename) _internal_readtextfile(filename)
-#define FileReadContent(filename,filesize) _internal_readbinaryfile(filename,filesize)
 
 /***
  *	append a string
